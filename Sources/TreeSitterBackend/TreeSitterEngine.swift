@@ -2,7 +2,7 @@ import ParsingCore
 import SwiftTreeSitter
 import TreeSitterJSON
 
-/// A ``ParserEngine`` that wraps the C tree-sitter runtime.
+/// A `ParserEngine` that wraps the C tree-sitter runtime.
 ///
 /// This is an opt-in wrapper backend: it lives in its own module so the pure-Swift core never pulls
 /// in the C runtime. It exists chiefly so the framework can run the *same* grammar and input through
@@ -10,7 +10,7 @@ import TreeSitterJSON
 /// (differential testing), and so their throughput can be compared.
 ///
 /// tree-sitter languages are compiled C parse tables rather than something derivable from the
-/// ``Grammar`` IR, so this backend maps a grammar by *name* to a bundled tree-sitter language. The
+/// `Grammar` IR, so this backend maps a grammar by *name* to a bundled tree-sitter language. The
 /// first milestone wires the JSON language; further languages slot in here as they are bundled.
 ///
 /// The wrapped tree-sitter tree is converted into the framework's concrete syntax tree by keeping
@@ -25,7 +25,7 @@ public struct TreeSitterEngine: ParserEngine {
 
     /// Creates a tree-sitter engine for a grammar, by mapping the grammar's name to a bundled language.
     /// - Parameter grammar: The grammar to parse against. Only its `name` is consulted.
-    /// - Throws: ``GrammarError/unsupportedLanguage(_:)`` if no bundled language matches.
+    /// - Throws: `GrammarError.unsupportedLanguage(_:)` if no bundled language matches.
     public init(grammar: Grammar) throws(GrammarError) {
         switch grammar.name {
         case "json":
@@ -38,7 +38,7 @@ public struct TreeSitterEngine: ParserEngine {
 
     /// Parses a source by delegating to the tree-sitter runtime and converting the result.
     /// - Parameter source: The source to parse.
-    /// - Returns: A ``ParseResult`` whose tree mirrors the tree-sitter parse (named nodes and fields).
+    /// - Returns: A `ParseResult` whose tree mirrors the tree-sitter parse (named nodes and fields).
     public func parse(_ source: Source) -> ParseResult {
         let parser = Parser()
         // setLanguage only throws on an ABI mismatch between the runtime and the compiled grammar,

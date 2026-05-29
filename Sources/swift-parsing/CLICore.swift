@@ -21,7 +21,7 @@ enum CLICore {
         }
     }
 
-    /// A native engine the CLI can construct, keyed by the engine type's own ``ParserEngine/identifier``.
+    /// A native engine the CLI can construct, keyed by the engine type's own `ParserEngine.identifier`.
     private static let nativeEngines: [(id: String, make: @Sendable (Grammar) throws -> any ParserEngine)] = [
         (UTF8Parser.identifier, { try UTF8Parser(grammar: $0) }),
         (ScalarParser.identifier, { try ScalarParser(grammar: $0) }),
@@ -40,7 +40,7 @@ enum CLICore {
     ///   - grammar: The grammar to parse against.
     /// - Returns: A parser engine.
     /// - Throws: ``CLIError/unknownEngine(_:)`` if the identifier is not recognised, or a
-    ///   ``GrammarError`` if the grammar cannot be prepared.
+    ///   `GrammarError` if the grammar cannot be prepared.
     static func engine(_ identifier: String, grammar: Grammar) throws -> any ParserEngine {
         guard let factory = nativeEngines.first(where: { $0.id == identifier })?.make else {
             throw CLIError.unknownEngine(identifier)

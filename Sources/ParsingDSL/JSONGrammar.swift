@@ -9,7 +9,7 @@ import ParsingCore
 /// modelled without escape sequences (a documented simplification); inputs in the differential
 /// corpus avoid escapes accordingly.
 public enum JSONGrammar {
-    /// Builds the JSON grammar as a ``Grammar`` intermediate representation.
+    /// Builds the JSON grammar as a `Grammar` intermediate representation.
     /// - Returns: The JSON grammar.
     public static func grammar() -> Grammar {
         Grammar(name: "json", start: "document") {

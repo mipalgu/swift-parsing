@@ -2,7 +2,7 @@ import ParsingCore
 
 /// A grammar-rule expression produced by the Swift DSL.
 ///
-/// `RuleExpr` is a thin wrapper over a ``Rule`` so that the result-builder DSL can compose
+/// `RuleExpr` is a thin wrapper over a `Rule` so that the result-builder DSL can compose
 /// rules ergonomically and accept string literals as anonymous token rules. A bare string
 /// literal in DSL position becomes `.literal(...)`.
 public struct RuleExpr: Sendable, ExpressibleByStringLiteral {
@@ -18,7 +18,7 @@ public struct RuleExpr: Sendable, ExpressibleByStringLiteral {
     public init(stringLiteral value: String) { self.rule = .literal(value) }
 }
 
-/// Result builder that assembles a flat list of ``Rule`` values from DSL statements.
+/// Result builder that assembles a flat list of `Rule` values from DSL statements.
 ///
 /// Each statement may be a ``RuleExpr`` or a bare `String` (an anonymous literal token).
 /// Control-flow forms (`if`, `if/else`, `for`) are supported so grammars can be generated
@@ -107,7 +107,7 @@ public func field(_ name: String, @RuleListBuilder _ body: () -> [Rule]) -> Rule
 
 /// Token-matcher constructors for the DSL.
 ///
-/// These build the data-only ``TokenMatcher`` values used by token rules, without any regular
+/// These build the data-only `TokenMatcher` values used by token rules, without any regular
 /// expression (so grammars authored this way are Embedded-safe and granularity-agnostic). They live in
 /// a namespace to avoid clashing with the rule-level combinators (`seq`, `optional`, …).
 public enum Match {

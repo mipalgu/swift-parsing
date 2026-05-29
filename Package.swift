@@ -35,6 +35,11 @@ let package = Package(
         // and pure-Swift builds (musl, WASM) never pull in the C runtime.
         .package(url: "https://github.com/tree-sitter/swift-tree-sitter", from: "0.9.0"),
         .package(url: "https://github.com/tree-sitter/tree-sitter-json", from: "0.24.0"),
+        // Documentation plugins only. These contribute build-time commands
+        // (`generate-static-documentation`, `generate-documentation`), never product code, so the
+        // embedded/musl/WASM builds and the shipped libraries are unaffected.
+        .package(url: "https://github.com/mipalgu/swift-docc-static.git", branch: "main"),
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.1.0"),
     ],
     targets: [
         .target(name: "ParsingCore", swiftSettings: strict),

@@ -1,13 +1,13 @@
 import ParsingCore
 
-/// A native, pure-Swift parser engine that interprets a ``Grammar`` by recursive descent.
+/// A native, pure-Swift parser engine that interprets a `Grammar` by recursive descent.
 ///
-/// The engine is generic over the input element granularity (``ParserInput``): instantiate it as
+/// The engine is generic over the input element granularity (`ParserInput`): instantiate it as
 /// ``UTF8Parser`` (fastest, the default), ``ScalarParser`` (code points), or ``GraphemeParser``
 /// (extended grapheme clusters, the most faithful for composite characters). It is pure Swift with no
 /// `Regex`, no `Foundation`, and no existentials, so it compiles under Embedded Swift.
 ///
-/// Token matching is driven by the data-only ``TokenMatcher`` interpreted element-by-element, so the
+/// Token matching is driven by the data-only `TokenMatcher` interpreted element-by-element, so the
 /// same grammar parses identically at every granularity. The engine walks the grammar's intermediate
 /// representation top-down with ordered-choice backtracking and builds a lossless concrete syntax tree
 /// directly. Rules whose names begin with an underscore are *hidden* (their children splice into the
@@ -22,7 +22,7 @@ public struct RecursiveDescentEngine<Input: ParserInput>: ParserEngine {
 
     /// Creates an engine for a grammar.
     /// - Parameter grammar: The grammar to parse against.
-    /// - Throws: ``GrammarError/undefinedStartRule(_:)`` if the start rule is not defined.
+    /// - Throws: `GrammarError.undefinedStartRule(_:)` if the start rule is not defined.
     public init(grammar: Grammar) throws(GrammarError) {
         guard grammar.rules[grammar.startRule] != nil else {
             throw .undefinedStartRule(grammar.startRule)
@@ -32,7 +32,7 @@ public struct RecursiveDescentEngine<Input: ParserInput>: ParserEngine {
 
     /// Parses a source into a complete, lossless tree plus diagnostics.
     /// - Parameter source: The source to parse.
-    /// - Returns: A ``ParseResult`` whose tree is always complete, even for malformed input.
+    /// - Returns: A `ParseResult` whose tree is always complete, even for malformed input.
     public func parse(_ source: Source) -> ParseResult {
         let input = Input.make(from: source.text)
         let parser = Parser<Input>(grammar: grammar, input: input)
