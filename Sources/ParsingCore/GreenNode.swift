@@ -129,4 +129,20 @@ public final class GreenNode: Sendable {
         if case .token = payload { return true }
         return false
     }
+
+    /// The exact source text this subtree was built from, including all trivia.
+    ///
+    /// Concatenating leading trivia, content and trailing trivia for every token in order
+    /// reproduces the original input verbatim. A round-trip equality check against the source
+    /// is the test of an engine's losslessness.
+    public var reconstructedText: String {
+        switch payload {
+        case let .token(text, leading, trailing):
+            return leading + text + trailing
+        case let .node(children):
+            var out = ""
+            for child in children { out += child.node.reconstructedText }
+            return out
+        }
+    }
 }

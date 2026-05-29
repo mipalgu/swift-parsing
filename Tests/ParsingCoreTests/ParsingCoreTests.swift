@@ -32,6 +32,14 @@ struct SourceSpanTests {
         #expect(u.end == 10)
         #expect(b.union(a) == u)
     }
+
+    @Test("Equality and hashing")
+    func equalityHashing() {
+        let a = SourceSpan(start: 1, length: 2)
+        #expect(a == SourceSpan(start: 1, length: 2))
+        #expect(a != SourceSpan(start: 1, length: 3))
+        #expect(Set([a, SourceSpan(start: 1, length: 2)]).count == 1)
+    }
 }
 
 @Suite("Source")
@@ -50,6 +58,15 @@ struct SourceTests {
     func emptySpan() {
         let source = Source("abc")
         #expect(source.text(of: .empty(at: 1)) == "")
+    }
+
+    @Test("count, equality and hashing")
+    func countEqualityHashing() {
+        let a = Source("abc")
+        #expect(a.count == 3)
+        #expect(a == Source("abc"))
+        #expect(a != Source("abd"))
+        #expect(Set([a, Source("abc")]).count == 1)
     }
 }
 
@@ -194,5 +211,33 @@ struct CapabilityTests {
         #expect(caps.contains(.lossless))
         #expect(caps.contains(.errorRecovering))
         #expect(!caps.contains(.incremental))
+    }
+}
+
+@Suite("Accessors")
+struct AccessorTests {
+    @Test("tokenText is nil for internal nodes")
+    func tokenTextNil() {
+        let node = GreenNode.node(SyntaxKind("n"), children: [])
+        #expect(node.tokenText == nil)
+        let tok = GreenNode.token(SyntaxKind("t"), text: "x")
+        #expect(tok.tokenText == "x")
+    }
+
+    @Test("Syntax forwards isMissing, isToken and kind")
+    func syntaxForwarding() {
+        let missing = Syntax(.missingToken(SyntaxKind("v")))
+        #expect(missing.isMissing)
+        #expect(missing.isToken)
+        #expect(missing.kind == SyntaxKind("v"))
+        let node = Syntax(.node(SyntaxKind("n"), children: []))
+        #expect(!node.isToken)
+        #expect(!node.isMissing)
+    }
+
+    @Test("SyntaxKind description is its name")
+    func kindDescription() {
+        #expect(SyntaxKind("object").description == "object")
+        #expect(SyntaxKind.error.description == "ERROR")
     }
 }
