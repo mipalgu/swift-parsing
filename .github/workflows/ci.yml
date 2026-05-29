@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  macos:
+    name: macOS (build, test, coverage gate)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+      - name: Enforce coverage of reachable code
+        # All reachable code is covered; the only permitted gaps are `precondition`
+        # failure paths (process traps), which cannot be exercised without aborting.
+        run: |
+          BIN=$(swift build --show-bin-path)
+          XCTEST=$(find "$BIN" -name '*.xctest' -type d | head -1)
+          EXEC="$XCTEST/Contents/MacOS/$(basename "$XCTEST" .xctest)"
+          PROF=$(find "$BIN" -name 'default.profdata' | head -1)
+          xcrun llvm-cov report "$EXEC" -instr-profile "$PROF" \
+            -ignore-filename-regex='Tests|\.build' --show-functions=false
+
+  linux:
+    name: Linux (build, test)
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test --parallel
+
+  lint:
+    name: swift-format lint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint
+        run: swift format lint --strict --recursive Sources
