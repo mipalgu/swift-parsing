@@ -25,16 +25,29 @@ let package = Package(
         .library(name: "ParsingDSL", targets: ["ParsingDSL"]),
         .library(name: "RecursiveDescent", targets: ["RecursiveDescent"]),
         .library(name: "GrammarImport", targets: ["GrammarImport"]),
+        .executable(name: "swift-parsing", targets: ["swift-parsing"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
     ],
     targets: [
         .target(name: "ParsingCore", swiftSettings: strict),
         .target(name: "ParsingDSL", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "RecursiveDescent", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "GrammarImport", dependencies: ["ParsingCore"], swiftSettings: strict),
+        .executableTarget(
+            name: "swift-parsing",
+            dependencies: [
+                "ParsingCore", "ParsingDSL", "RecursiveDescent", "GrammarImport",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            swiftSettings: strict
+        ),
 
         .testTarget(name: "ParsingCoreTests", dependencies: ["ParsingCore"], swiftSettings: strict),
         .testTarget(name: "ParsingDSLTests", dependencies: ["ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "RecursiveDescentTests", dependencies: ["RecursiveDescent", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "GrammarImportTests", dependencies: ["GrammarImport", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
+        .testTarget(name: "swift-parsingTests", dependencies: ["swift-parsing"], swiftSettings: strict),
     ]
 )
