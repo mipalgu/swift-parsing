@@ -22,6 +22,7 @@ let package = Package(
     ],
     products: [
         .library(name: "ParsingCore", targets: ["ParsingCore"]),
+        .library(name: "Parsing", targets: ["Parsing"]),
         .library(name: "ParsingDSL", targets: ["ParsingDSL"]),
         .library(name: "RecursiveDescent", targets: ["RecursiveDescent"]),
         .library(name: "GrammarImport", targets: ["GrammarImport"]),
@@ -37,9 +38,10 @@ let package = Package(
     ],
     targets: [
         .target(name: "ParsingCore", swiftSettings: strict),
+        .target(name: "Parsing", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "ParsingDSL", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "RecursiveDescent", dependencies: ["ParsingCore"], swiftSettings: strict),
-        .target(name: "GrammarImport", dependencies: ["ParsingCore"], swiftSettings: strict),
+        .target(name: "GrammarImport", dependencies: ["ParsingCore", "Parsing"], swiftSettings: strict),
         .target(
             name: "TreeSitterBackend",
             dependencies: [
@@ -59,9 +61,10 @@ let package = Package(
         ),
 
         .testTarget(name: "ParsingCoreTests", dependencies: ["ParsingCore"], swiftSettings: strict),
+        .testTarget(name: "ParsingTests", dependencies: ["Parsing", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "ParsingDSLTests", dependencies: ["ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "RecursiveDescentTests", dependencies: ["RecursiveDescent", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
-        .testTarget(name: "GrammarImportTests", dependencies: ["GrammarImport", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
+        .testTarget(name: "GrammarImportTests", dependencies: ["GrammarImport", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
         .testTarget(name: "swift-parsingTests", dependencies: ["swift-parsing"], swiftSettings: strict),
         .testTarget(name: "TreeSitterBackendTests", dependencies: ["TreeSitterBackend", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(

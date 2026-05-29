@@ -34,7 +34,7 @@ struct TreeSitterBackendTests {
     @Test("An unsupported grammar name is rejected")
     func unsupported() {
         let other = Grammar(name: "klingon", startRule: "s", rules: ["s": .literal("a")])
-        #expect(throws: TreeSitterEngine.BackendError.unsupportedLanguage("klingon")) {
+        #expect(throws: GrammarError.unsupportedLanguage("klingon")) {
             try TreeSitterEngine(grammar: other)
         }
     }

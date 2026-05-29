@@ -7,14 +7,14 @@ import Testing
 struct CLIParseTests {
     @Test("Parses JSON to an S-expression via the default engine")
     func parseValid() throws {
-        let (sexp, diagnostics) = try CLICore.parseJSON(#"{"a": 1}"#, engineIdentifier: "rd")
+        let (sexp, diagnostics) = try CLICore.parseJSON(#"{"a": 1}"#, engineIdentifier: CLICore.defaultEngine)
         #expect(sexp == "(document (object (pair key: (string (string_content)) value: (number))))")
         #expect(diagnostics.isEmpty)
     }
 
     @Test("Reports diagnostics for malformed JSON but still returns a tree")
     func parseInvalid() throws {
-        let (sexp, diagnostics) = try CLICore.parseJSON("true false", engineIdentifier: "rd")
+        let (sexp, diagnostics) = try CLICore.parseJSON("true false", engineIdentifier: CLICore.defaultEngine)
         #expect(sexp.contains("(ERROR"))
         #expect(!diagnostics.isEmpty)
     }
@@ -24,12 +24,12 @@ struct CLIParseTests {
         #expect(throws: CLICore.CLIError.unknownEngine("glr")) {
             try CLICore.parseJSON("{}", engineIdentifier: "glr")
         }
-        #expect(CLICore.CLIError.unknownEngine("glr").description.contains("rd"))
+        #expect(CLICore.CLIError.unknownEngine("glr").description.contains("rd-utf8"))
     }
 
-    @Test("Available engines include the native recursive-descent engine")
+    @Test("Available engines include the default native engine")
     func availableEngines() {
-        #expect(CLICore.availableEngines.contains("rd"))
+        #expect(CLICore.availableEngines.contains(CLICore.defaultEngine))
     }
 }
 

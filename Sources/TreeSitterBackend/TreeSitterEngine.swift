@@ -20,25 +20,19 @@ public struct TreeSitterEngine: ParserEngine {
     public static let capabilities: EngineCapabilities = [.errorRecovering]
     public static let identifier = "tree-sitter"
 
-    /// An error constructing the tree-sitter backend.
-    public enum BackendError: Error, Equatable {
-        /// No bundled tree-sitter language matches the grammar's name.
-        case unsupportedLanguage(String)
-    }
-
     private let language: Language
     private let rootKind: String
 
     /// Creates a tree-sitter engine for a grammar, by mapping the grammar's name to a bundled language.
     /// - Parameter grammar: The grammar to parse against. Only its `name` is consulted.
-    /// - Throws: ``BackendError/unsupportedLanguage(_:)`` if no bundled language matches.
-    public init(grammar: Grammar) throws {
+    /// - Throws: ``GrammarError/unsupportedLanguage(_:)`` if no bundled language matches.
+    public init(grammar: Grammar) throws(GrammarError) {
         switch grammar.name {
         case "json":
             self.language = Language(language: tree_sitter_json())
             self.rootKind = grammar.startRule
         default:
-            throw BackendError.unsupportedLanguage(grammar.name)
+            throw .unsupportedLanguage(grammar.name)
         }
     }
 

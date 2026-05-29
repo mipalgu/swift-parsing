@@ -21,26 +21,31 @@ enum CLICore {
         }
     }
 
-    /// The engine identifiers the CLI can construct.
-    ///
-    /// Only the native recursive-descent engine is wired in the first milestone; wrapper engines
-    /// (tree-sitter, ANTLR) join here as they are added, all behind ``ParserEngine``.
-    static let availableEngines = [RecursiveDescentEngine.identifier]
+    /// A native engine the CLI can construct, keyed by the engine type's own ``ParserEngine/identifier``.
+    private static let nativeEngines: [(id: String, make: @Sendable (Grammar) throws -> any ParserEngine)] = [
+        (UTF8Parser.identifier, { try UTF8Parser(grammar: $0) }),
+        (ScalarParser.identifier, { try ScalarParser(grammar: $0) }),
+        (GraphemeParser.identifier, { try GraphemeParser(grammar: $0) }),
+    ]
+
+    /// The identifier of the default engine (UTF-8, the fastest granularity).
+    static var defaultEngine: String { UTF8Parser.identifier }
+
+    /// The engine identifiers the CLI can construct, derived from the engine types themselves.
+    static var availableEngines: [String] { nativeEngines.map(\.id) }
 
     /// Builds a parser engine for a grammar by identifier.
     /// - Parameters:
-    ///   - identifier: The engine identifier (for example `"rd"`).
+    ///   - identifier: The engine identifier (see ``availableEngines``).
     ///   - grammar: The grammar to parse against.
     /// - Returns: A parser engine.
-    /// - Throws: ``CLIError/unknownEngine(_:)`` if the identifier is not recognised, or an engine
-    ///   construction error.
+    /// - Throws: ``CLIError/unknownEngine(_:)`` if the identifier is not recognised, or a
+    ///   ``GrammarError`` if the grammar cannot be prepared.
     static func engine(_ identifier: String, grammar: Grammar) throws -> any ParserEngine {
-        switch identifier {
-        case RecursiveDescentEngine.identifier:
-            return try RecursiveDescentEngine(grammar: grammar)
-        default:
+        guard let factory = nativeEngines.first(where: { $0.id == identifier })?.make else {
             throw CLIError.unknownEngine(identifier)
         }
+        return try factory(grammar)
     }
 
     /// Parses JSON text with the named engine and renders the result.

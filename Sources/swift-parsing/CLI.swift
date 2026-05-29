@@ -26,7 +26,7 @@ struct Parse: ParsableCommand {
     var file: String
 
     @Option(name: .shortAndLong, help: "Parser engine to use (\(CLICore.availableEngines.joined(separator: ", "))).")
-    var engine: String = "rd"
+    var engine: String = CLICore.defaultEngine
 
     @Flag(name: .shortAndLong, help: "Also print diagnostics to standard error.")
     var diagnostics: Bool = false

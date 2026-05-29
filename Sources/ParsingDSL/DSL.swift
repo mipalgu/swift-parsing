@@ -105,24 +105,76 @@ public func field(_ name: String, @RuleListBuilder _ body: () -> [Rule]) -> Rule
     RuleExpr(.field(name, collapse(body())))
 }
 
-/// A named token matching a regular expression.
-/// - Parameters:
-///   - name: The node-type name for the token.
-///   - pattern: The anchored regular expression.
-/// - Returns: A named `.token` rule expression.
-public func regex(_ name: String, _ pattern: String) -> RuleExpr {
-    RuleExpr(.token(name: name, pattern: .regex(pattern), isNamed: true))
+/// Token-matcher constructors for the DSL.
+///
+/// These build the data-only ``TokenMatcher`` values used by token rules, without any regular
+/// expression (so grammars authored this way are Embedded-safe and granularity-agnostic). They live in
+/// a namespace to avoid clashing with the rule-level combinators (`seq`, `optional`, …).
+public enum Match {
+    /// Matches an exact literal string.
+    public static func lit(_ text: String) -> TokenMatcher { .literal(text) }
+    /// Matches any single element.
+    public static var any: TokenMatcher { .anyElement }
+    /// Matches a single ASCII decimal digit.
+    public static var digit: TokenMatcher { .builtin(.digit) }
+    /// Matches a single ASCII whitespace element.
+    public static var whitespace: TokenMatcher { .builtin(.whitespace) }
+    /// Matches a single ASCII hexadecimal digit.
+    public static var hexDigit: TokenMatcher { .builtin(.hexDigit) }
+    /// Matches a single ASCII letter.
+    public static var letter: TokenMatcher { .builtin(.letter) }
+    /// Matches a single element whose scalar value lies in the inclusive character range.
+    /// - Parameters:
+    ///   - low: The lowest character (inclusive).
+    ///   - high: The highest character (inclusive).
+    /// - Returns: A scalar-range matcher.
+    public static func range(_ low: Character, _ high: Character) -> TokenMatcher {
+        .scalarRange(low.scalarValue ... high.scalarValue)
+    }
+    /// Matches one element for which `matcher` does **not** match (one-element negation).
+    /// - Parameter matcher: The matcher to negate.
+    /// - Returns: A negated matcher.
+    public static func not(_ matcher: TokenMatcher) -> TokenMatcher { .negated(matcher) }
+    /// Matches each sub-matcher in order.
+    /// - Parameter matchers: The sub-matchers.
+    /// - Returns: A sequence matcher.
+    public static func seq(_ matchers: TokenMatcher...) -> TokenMatcher { .sequence(matchers) }
+    /// Matches the first sub-matcher that matches.
+    /// - Parameter matchers: The alternatives.
+    /// - Returns: An alternation matcher.
+    public static func oneOf(_ matchers: TokenMatcher...) -> TokenMatcher { .alternation(matchers) }
+    /// Matches zero or more repetitions.
+    /// - Parameter matcher: The repeated matcher.
+    /// - Returns: A repetition matcher.
+    public static func zeroOrMore(_ matcher: TokenMatcher) -> TokenMatcher { .repeated(min: 0, max: nil, matcher) }
+    /// Matches one or more repetitions.
+    /// - Parameter matcher: The repeated matcher.
+    /// - Returns: A repetition matcher.
+    public static func oneOrMore(_ matcher: TokenMatcher) -> TokenMatcher { .repeated(min: 1, max: nil, matcher) }
+    /// Matches zero or one (optional).
+    /// - Parameter matcher: The optional matcher.
+    /// - Returns: A repetition matcher allowing zero or one match.
+    public static func optional(_ matcher: TokenMatcher) -> TokenMatcher { .repeated(min: 0, max: 1, matcher) }
 }
 
-/// An anonymous token matching a regular expression.
+/// A named token built from a token matcher.
+/// - Parameters:
+///   - name: The node-type name for the token.
+///   - matcher: The token matcher.
+/// - Returns: A named `.token` rule expression.
+public func token(_ name: String, _ matcher: TokenMatcher) -> RuleExpr {
+    RuleExpr(.token(name: name, matcher: matcher, isNamed: true))
+}
+
+/// An anonymous token built from a token matcher.
 ///
-/// Use this for the body of a named rule (for example `number`), so the named node comes from the
-/// rule reference and the token itself stays hidden, yielding `(number)` rather than `(number (number))`.
+/// Use this for the body of a named rule (for example `number`), so the named node comes from the rule
+/// reference and the token itself stays hidden, yielding `(number)` rather than `(number (number))`.
 ///
-/// - Parameter pattern: The anchored regular expression.
+/// - Parameter matcher: The token matcher.
 /// - Returns: An anonymous `.token` rule expression.
-public func pattern(_ pattern: String) -> RuleExpr {
-    RuleExpr(.token(name: pattern, pattern: .regex(pattern), isNamed: false))
+public func token(_ matcher: TokenMatcher) -> RuleExpr {
+    RuleExpr(.token(name: "_token", matcher: matcher, isNamed: false))
 }
 
 /// A definition of a single named rule, produced by ``rule(_:_:)``.
@@ -157,12 +209,12 @@ extension Grammar {
     /// - Parameters:
     ///   - name: The grammar's name.
     ///   - start: The start rule name. Must be defined in the body.
-    ///   - extras: Trivia token patterns. Defaults to a single whitespace pattern.
+    ///   - extras: Trivia token matchers. Defaults to ASCII whitespace.
     ///   - body: The DSL body producing the rule definitions.
     public init(
         name: String,
         start: String,
-        extras: [TokenPattern] = [.regex("[ \\t\\r\\n]+")],
+        extras: [TokenMatcher] = [.builtin(.whitespace)],
         @GrammarBuilder _ body: () -> [RuleDefinition]
     ) {
         var rules: [String: Rule] = [:]

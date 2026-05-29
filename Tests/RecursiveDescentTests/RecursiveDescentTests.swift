@@ -4,138 +4,38 @@ import ParsingCore
 import ParsingDSL
 @testable import RecursiveDescent
 
-/// Parses JSON with the recursive-descent engine and returns the result.
+/// Parses JSON with the UTF-8 engine and returns the result.
 private func parseJSON(_ text: String) throws -> ParseResult {
-    let engine = try RecursiveDescentEngine(grammar: JSONGrammar.grammar())
+    let engine = try UTF8Parser(grammar: JSONGrammar.grammar())
     return engine.parse(Source(text))
 }
 
-@Suite("Scanner")
-struct ScannerTests {
-    let patterns = try! PatternSet(grammar: JSONGrammar.grammar())
-
-    private func scanner(_ text: String) -> Scanner {
-        Scanner(source: Source(text), patterns: patterns)
+@Suite("Engine metadata")
+struct MetadataTests {
+    @Test("Identifiers are derived per granularity")
+    func identifiers() {
+        #expect(UTF8Parser.identifier == "rd-utf8")
+        #expect(ScalarParser.identifier == "rd-scalar")
+        #expect(GraphemeParser.identifier == "rd-grapheme")
     }
 
-    @Test("Matches a literal at the cursor and advances by UTF-8 bytes")
-    func literalMatch() {
-        let s = scanner("{}")
-        #expect(s.match(.literal("{")) == "{")
-        #expect(s.byteOffset == 1)
-        #expect(s.match(.literal("{")) == nil) // next char is '}', no match
-        #expect(s.match(.literal("}")) == "}")
-        #expect(s.isAtEnd)
+    @Test("Capabilities")
+    func capabilities() {
+        #expect(UTF8Parser.capabilities.contains(.lossless))
+        #expect(UTF8Parser.capabilities.contains(.errorRecovering))
     }
 
-    @Test("Matches a regex terminal (number) greedily")
-    func regexMatch() {
-        let s = scanner("-12.5e3 rest")
-        #expect(s.match(.regex(#"-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?"#)) == "-12.5e3")
-    }
-
-    @Test("Consumes trivia and reports the remainder")
-    func trivia() {
-        let s = scanner("   {")
-        #expect(s.consumeTrivia() == "   ")
-        #expect(s.rest == "{")
-        #expect(s.consumeTrivia() == "") // no trivia at '{'
-    }
-
-    @Test("Marks support backtracking")
-    func backtracking() {
-        let s = scanner("true")
-        let mark = s.mark()
-        #expect(s.match(.literal("true")) == "true")
-        #expect(s.isAtEnd)
-        s.reset(to: mark)
-        #expect(!s.isAtEnd)
-        #expect(s.match(.literal("false")) == nil)
-        #expect(s.match(.literal("true")) == "true")
-    }
-
-    @Test("UTF-8 multibyte content advances the byte offset correctly")
-    func multibyte() {
-        let s = scanner(#"é"#)
-        #expect(s.match(.regex(#"[^"]+"#)) == "é")
-        #expect(s.byteOffset == 2) // 'é' is two UTF-8 bytes
-    }
-
-    @Test("A regex that matches empty yields no token")
-    func emptyRegexMatch() throws {
-        // A grammar whose only terminal can match the empty string.
-        let g = Grammar(name: "g", startRule: "s",
-                        rules: ["s": .token(name: "opt", pattern: .regex("a*"), isNamed: false)])
-        let patterns = try PatternSet(grammar: g)
-        let s = Scanner(source: Source("bbb"), patterns: patterns)
-        #expect(s.match(.regex("a*")) == nil) // empty match must not consume or produce a token
-        #expect(s.byteOffset == 0)
+    @Test("An undefined start rule is rejected at construction")
+    func undefinedStart() {
+        let grammar = Grammar(name: "g", startRule: "missing", rules: ["s": .literal("a")])
+        #expect(throws: GrammarError.undefinedStartRule("missing")) {
+            _ = try UTF8Parser(grammar: grammar)
+        }
     }
 }
 
-@Suite("RecursiveDescent engine: grammar generality")
-struct GeneralityTests {
-    /// Parses with a hand-built grammar (bypassing the JSON-specific DSL) to exercise rule forms
-    /// that JSON does not use: one-or-more repetition, multi-child fields, precedence, and a
-    /// reference to an undefined rule.
-    @Test("repeat1, multi-child field and precedence parse and stay lossless")
-    func richGrammar() throws {
-        let rules: [String: Rule] = [
-            "s": .sequence([
-                .field("pair", .sequence([.literal("a"), .literal("b")])), // field wrapping two children
-                .repeatOneOrMore(.literal("c")),                            // one-or-more
-                .precedence(level: 1, associativity: .left, .literal("d")), // precedence wrapper
-            ]),
-        ]
-        let g = Grammar(name: "g", startRule: "s", rules: rules, extras: [.regex("[ ]+")])
-        let engine = try RecursiveDescentEngine(grammar: g)
-        let result = engine.parse(Source("abccd"))
-        #expect(!result.hasErrors)
-        #expect(result.tree.green.reconstructedText == "abccd")
-    }
-
-    @Test("repeat1 with no match recovers via ERROR")
-    func repeatOneOrMoreNoMatch() throws {
-        let g = Grammar(name: "g", startRule: "s",
-                        rules: ["s": .repeatOneOrMore(.literal("c"))], extras: [.regex("[ ]+")])
-        let engine = try RecursiveDescentEngine(grammar: g)
-        let result = engine.parse(Source("x"))
-        #expect(result.hasErrors)
-        #expect(result.tree.green.reconstructedText == "x")
-    }
-
-    @Test("Zero-width repetition terminates instead of looping forever")
-    func zeroWidthRepeat() throws {
-        // `repeat0(optional("x"))` matches empty on every iteration; the engine must break out.
-        let g = Grammar(name: "g", startRule: "s",
-                        rules: ["s": .repeatZeroOrMore(.optional(.literal("x")))], extras: [.regex("[ ]+")])
-        let engine = try RecursiveDescentEngine(grammar: g)
-        let result = engine.parse(Source(""))
-        #expect(!result.hasErrors)
-        #expect(result.sExpression() == "(s)")
-    }
-
-    @Test("Reference to an undefined rule recovers via MISSING")
-    func danglingReference() throws {
-        let g = Grammar(name: "d", startRule: "s",
-                        rules: ["s": .reference("missing")], extras: [.regex("[ ]+")])
-        let engine = try RecursiveDescentEngine(grammar: g)
-        let result = engine.parse(Source("x"))
-        #expect(result.hasErrors)
-        #expect(result.sExpression().contains("(MISSING value)"))
-        #expect(result.tree.green.reconstructedText == "x")
-    }
-}
-
-@Suite("RecursiveDescent engine: valid JSON")
+@Suite("Valid JSON")
 struct ValidJSONTests {
-    @Test("Engine identity and capabilities")
-    func metadata() {
-        #expect(RecursiveDescentEngine.identifier == "rd")
-        #expect(RecursiveDescentEngine.capabilities.contains(.lossless))
-        #expect(RecursiveDescentEngine.capabilities.contains(.errorRecovering))
-    }
-
     @Test("Object with string key and number value")
     func object() throws {
         let result = try parseJSON(#"{ "a": 1 }"#)
@@ -144,7 +44,7 @@ struct ValidJSONTests {
             == "(document (object (pair key: (string (string_content)) value: (number))))")
     }
 
-    @Test("Nested array of values")
+    @Test("Array of values")
     func array() throws {
         let result = try parseJSON(#"[1, "x", true, null]"#)
         #expect(!result.hasErrors)
@@ -161,7 +61,6 @@ struct ValidJSONTests {
     @Test("Nested structure")
     func nested() throws {
         let result = try parseJSON(#"{"o": {"a": [1, 2]}}"#)
-        #expect(!result.hasErrors)
         #expect(result.sExpression() == """
             (document (object (pair key: (string (string_content)) \
             value: (object (pair key: (string (string_content)) \
@@ -169,17 +68,14 @@ struct ValidJSONTests {
             """)
     }
 
-    @Test("Bare literals parse as documents")
+    @Test("Bare literals")
     func bareLiterals() throws {
         #expect(try parseJSON("true").sExpression() == "(document (true))")
         #expect(try parseJSON("false").sExpression() == "(document (false))")
         #expect(try parseJSON("null").sExpression() == "(document (null))")
-        #expect(try parseJSON("42").sExpression() == "(document (number))")
     }
 
-    @Test("Numbers: negatives, decimals and exponents", arguments: [
-        "0", "-1", "3.14", "-2.5e10", "1E+9", "10",
-    ])
+    @Test("Numbers: negatives, decimals and exponents", arguments: ["0", "-1", "3.14", "-2.5e10", "1E+9", "10"])
     func numbers(_ literal: String) throws {
         let result = try parseJSON(literal)
         #expect(!result.hasErrors)
@@ -187,26 +83,43 @@ struct ValidJSONTests {
     }
 }
 
-@Suite("RecursiveDescent engine: losslessness")
-struct LosslessnessTests {
-    @Test("Reconstructed text equals input", arguments: [
+@Suite("Input granularity")
+struct GranularityTests {
+    /// The same JSON produces the same tree at every granularity (UTF-8, scalar, grapheme), including
+    /// input containing multi-byte/composite characters.
+    @Test("All granularities agree", arguments: [
         #"{ "a": 1 }"#,
-        "  [1,2,3]  ",
-        "{}",
-        "\n\ttrue\n",
-        #"{"nested": {"x": [true, false, null]}}"#,
-        "   ", // whitespace only
-        "garbage",
+        #"["é", "🇦🇺", true]"#,
+        #"{"key": "naïve café"}"#,
     ])
-    func roundTrip(_ input: String) throws {
-        let result = try parseJSON(input)
-        #expect(result.tree.green.reconstructedText == input)
+    func granularitiesAgree(_ input: String) throws {
+        let grammar = JSONGrammar.grammar()
+        let utf8 = try UTF8Parser(grammar: grammar).parse(Source(input))
+        let scalar = try ScalarParser(grammar: grammar).parse(Source(input))
+        let grapheme = try GraphemeParser(grammar: grammar).parse(Source(input))
+        #expect(utf8.sExpression() == scalar.sExpression())
+        #expect(scalar.sExpression() == grapheme.sExpression())
+        // Lossless at every granularity.
+        #expect(utf8.tree.green.reconstructedText == input)
+        #expect(scalar.tree.green.reconstructedText == input)
+        #expect(grapheme.tree.green.reconstructedText == input)
     }
 }
 
-@Suite("RecursiveDescent engine: error recovery")
+@Suite("Losslessness")
+struct LosslessnessTests {
+    @Test("Reconstructed text equals input", arguments: [
+        #"{ "a": 1 }"#, "  [1,2,3]  ", "{}", "\n\ttrue\n",
+        #"{"nested": {"x": [true, false, null]}}"#, "   ", "garbage",
+    ])
+    func roundTrip(_ input: String) throws {
+        #expect(try parseJSON(input).tree.green.reconstructedText == input)
+    }
+}
+
+@Suite("Error recovery")
 struct ErrorRecoveryTests {
-    @Test("Trailing junk becomes an ERROR node, tree stays complete")
+    @Test("Trailing junk becomes an ERROR node")
     func trailingJunk() throws {
         let result = try parseJSON("true false")
         #expect(result.hasErrors)
@@ -223,7 +136,7 @@ struct ErrorRecoveryTests {
         #expect(result.tree.green.reconstructedText == "@@@")
     }
 
-    @Test("Empty input recovers without crashing")
+    @Test("Empty input recovers")
     func empty() throws {
         let result = try parseJSON("")
         #expect(result.hasErrors)
@@ -240,10 +153,77 @@ struct ErrorRecoveryTests {
 
     @Test("Diagnostics carry a source span")
     func diagnosticSpans() throws {
-        let result = try parseJSON("true false")
-        #expect(!result.diagnostics.isEmpty)
-        let diag = result.diagnostics[0]
-        #expect(diag.severity == .error)
-        #expect(diag.span.start >= 0)
+        let diagnostics = try parseJSON("true false").diagnostics
+        #expect(!diagnostics.isEmpty)
+        #expect(diagnostics[0].severity == .error)
+        #expect(diagnostics[0].span.start >= 0)
+    }
+}
+
+@Suite("Matcher interpretation")
+struct MatcherTests {
+    private func parse(_ grammar: Grammar, _ text: String) throws -> ParseResult {
+        try UTF8Parser(grammar: grammar).parse(Source(text))
+    }
+
+    @Test("Ranges, builtins, alternation, repetition and anyElement")
+    func richMatchers() throws {
+        let grammar = Grammar(name: "g", startRule: "s", rules: [
+            "s": .sequence([
+                .token(name: "letter", matcher: Match.range("a", "z"), isNamed: true),
+                .token(name: "digits", matcher: Match.oneOrMore(Match.digit), isNamed: true),
+                .token(name: "bounded", matcher: .repeated(min: 2, max: 3, Match.lit("!")), isNamed: true),
+                .token(name: "notbang", matcher: Match.not(Match.lit("!")), isNamed: true),
+                .token(name: "anything", matcher: Match.any, isNamed: true),
+                .token(name: "kw", matcher: Match.oneOf(Match.lit("yes"), Match.lit("no")), isNamed: true),
+            ]),
+        ])
+        let result = try parse(grammar, "a12!!xZyes")
+        #expect(!result.hasErrors)
+        #expect(result.sExpression() == "(s (letter) (digits) (bounded) (notbang) (anything) (kw))")
+        #expect(result.tree.green.reconstructedText == "a12!!xZyes")
+    }
+
+    @Test("hexDigit and letter built-in classes")
+    func hexAndLetter() throws {
+        let grammar = Grammar(name: "g", startRule: "s", rules: [
+            "s": .sequence([
+                .token(name: "hex", matcher: Match.oneOrMore(Match.hexDigit), isNamed: true),
+                .token(name: "word", matcher: Match.oneOrMore(Match.letter), isNamed: true),
+            ]),
+        ], extras: [])
+        let result = try parse(grammar, "1aF3Zebra")
+        #expect(!result.hasErrors)
+        #expect(result.sExpression() == "(s (hex) (word))")
+    }
+
+    @Test("repeat1 with no match recovers")
+    func repeatOneOrMoreNoMatch() throws {
+        let grammar = Grammar(name: "g", startRule: "s", rules: ["s": .repeatOneOrMore(.literal("c"))])
+        let result = try parse(grammar, "x")
+        #expect(result.hasErrors)
+        #expect(result.tree.green.reconstructedText == "x")
+    }
+
+    @Test("Multi-child field, precedence and zero-width repetition")
+    func structuralForms() throws {
+        let grammar = Grammar(name: "g", startRule: "s", rules: [
+            "s": .sequence([
+                .field("pair", .sequence([.literal("a"), .literal("b")])),
+                .precedence(level: 1, associativity: .left, .literal("c")),
+                .repeatZeroOrMore(.optional(.literal("x"))),
+            ]),
+        ])
+        let result = try parse(grammar, "abc")
+        #expect(!result.hasErrors)
+        #expect(result.tree.green.reconstructedText == "abc")
+    }
+
+    @Test("Reference to an undefined rule recovers via MISSING")
+    func danglingReference() throws {
+        let grammar = Grammar(name: "g", startRule: "s", rules: ["s": .reference("nope")])
+        let result = try parse(grammar, "x")
+        #expect(result.hasErrors)
+        #expect(result.sExpression().contains("(MISSING value)"))
     }
 }

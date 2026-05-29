@@ -70,8 +70,9 @@ public protocol ParserEngine: Sendable {
     /// Prepares the engine to parse a particular grammar.
     ///
     /// - Parameter grammar: The grammar to parse against.
-    /// - Throws: If the grammar cannot be compiled by this engine.
-    init(grammar: Grammar) throws
+    /// - Throws: ``GrammarError`` if the grammar cannot be prepared by this engine. Typed throws keep
+    ///   the protocol usable from Embedded Swift, where the `any Error` existential is unavailable.
+    init(grammar: Grammar) throws(GrammarError)
 
     /// Parses a source into a complete tree plus diagnostics.
     ///

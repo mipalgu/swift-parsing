@@ -25,23 +25,26 @@ struct DifferentialTests {
         #"{"a":{"b":{"c":[1,[2,[3]]]}}}"#,
     ]
 
-    private static func engines() throws -> (RecursiveDescentEngine, TreeSitterEngine) {
+    @Test("Native (UTF-8) and tree-sitter produce identical syntax trees", arguments: corpus)
+    func utf8Agreement(_ input: String) throws {
         let grammar = JSONGrammar.grammar()
-        return (try RecursiveDescentEngine(grammar: grammar), try TreeSitterEngine(grammar: grammar))
+        let native = try UTF8Parser(grammar: grammar).parse(Source(input)).sExpression()
+        let treeSitter = try TreeSitterEngine(grammar: grammar).parse(Source(input)).sExpression()
+        #expect(native == treeSitter, "input \(input): native=\(native) tree-sitter=\(treeSitter)")
     }
 
-    @Test("Both engines produce identical syntax trees", arguments: corpus)
-    func agreement(_ input: String) throws {
-        let (native, treeSitter) = try Self.engines()
-        let nativeTree = native.parse(Source(input)).sExpression()
-        let treeSitterTree = treeSitter.parse(Source(input)).sExpression()
-        #expect(nativeTree == treeSitterTree, "input \(input): native=\(nativeTree) tree-sitter=\(treeSitterTree)")
+    @Test("Native (scalar) and tree-sitter produce identical syntax trees", arguments: corpus)
+    func scalarAgreement(_ input: String) throws {
+        let grammar = JSONGrammar.grammar()
+        let native = try ScalarParser(grammar: grammar).parse(Source(input)).sExpression()
+        let treeSitter = try TreeSitterEngine(grammar: grammar).parse(Source(input)).sExpression()
+        #expect(native == treeSitter, "input \(input): native=\(native) tree-sitter=\(treeSitter)")
     }
 
     @Test("Both engines agree there are no errors on well-formed input", arguments: corpus)
     func bothClean(_ input: String) throws {
-        let (native, treeSitter) = try Self.engines()
-        #expect(!native.parse(Source(input)).hasErrors)
-        #expect(!treeSitter.parse(Source(input)).hasErrors)
+        let grammar = JSONGrammar.grammar()
+        #expect(try !UTF8Parser(grammar: grammar).parse(Source(input)).hasErrors)
+        #expect(try !TreeSitterEngine(grammar: grammar).parse(Source(input)).hasErrors)
     }
 }

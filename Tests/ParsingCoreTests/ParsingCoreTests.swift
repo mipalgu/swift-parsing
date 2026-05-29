@@ -180,12 +180,12 @@ struct GrammarIRTests {
     @Test("Literal helper builds anonymous token rule")
     func literalHelper() {
         let rule = Rule.literal("{")
-        guard case let .token(name, pattern, isNamed) = rule else {
+        guard case let .token(name, matcher, isNamed) = rule else {
             Issue.record("expected token rule")
             return
         }
         #expect(name == "{")
-        #expect(pattern == .literal("{"))
+        #expect(matcher == .literal("{"))
         #expect(!isNamed)
     }
 
@@ -199,7 +199,7 @@ struct GrammarIRTests {
         #expect(g.name == "tiny")
         #expect(g.startRule == "s")
         #expect(g.rules.count == 2)
-        #expect(g.extras == [.regex("[ \\t\\r\\n]+")])
+        #expect(g.extras == [.builtin(.whitespace)])
     }
 }
 

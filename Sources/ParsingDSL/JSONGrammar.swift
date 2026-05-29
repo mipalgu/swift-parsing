@@ -75,12 +75,22 @@ public enum JSONGrammar {
                 }
             }
 
-            // No escape sequences in the first milestone: content is any run of non-quote bytes.
+            // No escape sequences in the first milestone: content is any run of non-quote elements.
             // The token is anonymous; the named `string_content` node comes from this rule's reference.
-            rule("string_content") { pattern(#"[^"]+"#) }
+            rule("string_content") { token(Match.oneOrMore(Match.not(Match.lit("\"")))) }
 
+            // number = -?(0 | [1-9][0-9]*)(.[0-9]+)?([eE][+-]?[0-9]+)?  — expressed with matchers, no regex.
             rule("number") {
-                pattern(#"-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?"#)
+                token(Match.seq(
+                    Match.optional(Match.lit("-")),
+                    Match.oneOf(Match.lit("0"), Match.seq(Match.range("1", "9"), Match.zeroOrMore(Match.digit))),
+                    Match.optional(Match.seq(Match.lit("."), Match.oneOrMore(Match.digit))),
+                    Match.optional(Match.seq(
+                        Match.oneOf(Match.lit("e"), Match.lit("E")),
+                        Match.optional(Match.oneOf(Match.lit("+"), Match.lit("-"))),
+                        Match.oneOrMore(Match.digit)
+                    ))
+                ))
             }
 
             rule("true") { "true" }

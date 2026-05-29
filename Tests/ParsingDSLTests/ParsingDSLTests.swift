@@ -31,10 +31,23 @@ struct DSLCombinatorTests {
         #expect(field("key") { ref("a") }.rule == .field("key", .reference("a")))
     }
 
-    @Test("regex builds a named token")
-    func regexToken() {
-        let r = regex("number", "[0-9]+")
-        #expect(r.rule == .token(name: "number", pattern: .regex("[0-9]+"), isNamed: true))
+    @Test("token builders produce named and anonymous token rules")
+    func tokenBuilders() {
+        #expect(token("number", Match.oneOrMore(Match.digit)).rule
+            == .token(name: "number", matcher: .repeated(min: 1, max: nil, .builtin(.digit)), isNamed: true))
+        #expect(token(Match.lit("x")).rule == .token(name: "_token", matcher: .literal("x"), isNamed: false))
+    }
+
+    @Test("Match combinators build the matcher tree")
+    func matchCombinators() {
+        #expect(Match.range("0", "9") == .scalarRange(0x30 ... 0x39))
+        #expect(Match.not(Match.lit("\"")) == .negated(.literal("\"")))
+        #expect(Match.oneOf(Match.lit("a"), Match.lit("b")) == .alternation([.literal("a"), .literal("b")]))
+        #expect(Match.seq(Match.digit, Match.any) == .sequence([.builtin(.digit), .anyElement]))
+        #expect(Match.optional(Match.lit("-")) == .repeated(min: 0, max: 1, .literal("-")))
+        #expect(Match.zeroOrMore(Match.whitespace) == .repeated(min: 0, max: nil, .builtin(.whitespace)))
+        #expect(Match.hexDigit == .builtin(.hexDigit))
+        #expect(Match.letter == .builtin(.letter))
     }
 
     @Test("Control-flow builders: if, if/else and for")
@@ -129,19 +142,15 @@ struct JSONGrammarTests {
         #expect(g.rules["null"] == .literal("null"))
     }
 
-    @Test("number and string_content are anonymous regex tokens")
+    @Test("number and string_content are anonymous matcher tokens")
     func tokens() {
-        // The token itself is anonymous; the named `number` node comes from the rule reference.
-        if case let .token(_, pattern, isNamed) = g.rules["number"] {
+        // The token itself is anonymous; the named node comes from the rule reference.
+        if case let .token(_, _, isNamed) = g.rules["number"] {
             #expect(!isNamed)
-            if case .regex = pattern {} else { Issue.record("number should be a regex token") }
         } else {
             Issue.record("number should be a token")
         }
-        if case let .token(_, _, isNamed) = g.rules["string_content"] {
-            #expect(!isNamed)
-        } else {
-            Issue.record("string_content should be a token")
-        }
+        #expect(g.rules["string_content"]
+            == .token(name: "_token", matcher: .repeated(min: 1, max: nil, .negated(.literal("\""))), isNamed: false))
     }
 }

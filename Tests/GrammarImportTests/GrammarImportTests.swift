@@ -3,20 +3,30 @@ import Testing
 
 import ParsingCore
 import ParsingDSL
+import RecursiveDescent
 @testable import GrammarImport
 
 @Suite("grammar.json round-trip")
 struct RoundTripTests {
-    @Test("JSON grammar survives IR -> grammar.json -> IR unchanged")
+    @Test("JSON grammar survives export -> import and still parses identically")
     func jsonGrammarRoundTrip() throws {
+        // Anonymous token names are not part of the tree-sitter encoding, so an exact IR round-trip is
+        // not expected; instead the re-imported grammar must be *semantically* equivalent: it parses
+        // the same inputs to the same trees.
         let original = JSONGrammar.grammar()
         let exported = try TreeSitterGrammarJSON.export(original)
         let reimported = try TreeSitterGrammarJSON.grammar(from: exported, startRule: original.startRule)
-        #expect(reimported == original)
+        for input in [#"{ "a": 1 }"#, #"[1, "x", true, null]"#, "-2.5e10", "{}"] {
+            let before = try UTF8Parser(grammar: original).parse(Source(input)).sExpression()
+            let after = try UTF8Parser(grammar: reimported).parse(Source(input)).sExpression()
+            #expect(before == after, "mismatch for \(input)")
+        }
     }
 
-    @Test("A grammar exercising every rule form round-trips")
+    @Test("A grammar of structural rules and literal tokens round-trips exactly")
     func allFormsRoundTrip() throws {
+        // Literal tokens, structural rules and round-trippable matchers (built-in classes) preserve
+        // their IR exactly through grammar.json.
         let rules: [String: Rule] = [
             "s": .sequence([
                 .reference("kw"),
@@ -28,13 +38,10 @@ struct RoundTripTests {
                 .precedence(level: 2, associativity: .left, .literal("l")),
                 .precedence(level: 3, associativity: .right, .literal("r")),
                 .precedence(level: 1, associativity: .none, .literal("n")),
-                // Anonymous regex tokens carry their pattern source as their name (as `pattern()`
-                // produces), which is what survives the nameless tree-sitter token encoding.
-                .token(name: "[0-9]+", pattern: .regex("[0-9]+"), isNamed: false),
             ]),
             "kw": .literal("kw"),
         ]
-        let g = Grammar(name: "all", startRule: "s", rules: rules, extras: [.regex("\\s+"), .literal("//")])
+        let g = Grammar(name: "all", startRule: "s", rules: rules, extras: [.builtin(.whitespace), .literal("//")])
         let exported = try TreeSitterGrammarJSON.export(g)
         let reimported = try TreeSitterGrammarJSON.grammar(from: exported, startRule: "s")
         #expect(reimported == g)
@@ -69,8 +76,8 @@ struct ImportTests {
         let g = try TreeSitterGrammarJSON.grammar(fromString: json, startRule: "s")
         #expect(g.name == "demo")
         #expect(g.startRule == "s")
-        // The SYMBOL extra (comment) is dropped; the PATTERN extra is kept.
-        #expect(g.extras == [.regex("\\s+")])
+        // The SYMBOL extra (comment) is dropped; the PATTERN extra is kept and lowered to a matcher.
+        #expect(g.extras == [.repeated(min: 1, max: nil, .builtin(.whitespace))])
 
         guard case let .sequence(parts) = g.rules["s"] else {
             Issue.record("s should be a sequence")
@@ -91,7 +98,7 @@ struct ImportTests {
     func defaultExtras() throws {
         let json = #"{ "name": "x", "rules": { "s": { "type": "STRING", "value": "a" } } }"#
         let g = try TreeSitterGrammarJSON.grammar(fromString: json, startRule: "s")
-        #expect(g.extras == [.regex("[ \\t\\r\\n]+")])
+        #expect(g.extras == [.builtin(.whitespace)])
     }
 }
 
@@ -162,7 +169,7 @@ struct DefensiveTests {
         }
         #expect(parts[0] == .reference(""))                        // SYMBOL without name
         #expect(parts[1] == .literal(""))                          // STRING without value
-        #expect(parts[2] == .token(name: "", pattern: .regex(""), isNamed: false)) // PATTERN without value
+        #expect(parts[2] == .token(name: "", matcher: .literal(""), isNamed: false)) // PATTERN without value
         #expect(parts[3] == .field("", .sequence([])))             // FIELD without name
         #expect(parts[4] == .sequence([]))                         // SEQ without members
         #expect(parts[5] == .precedence(level: 2, associativity: .none, .sequence([]))) // fractional value
@@ -189,9 +196,11 @@ struct DefensiveTests {
         let text = try TreeSitterGrammarJSON.exportString(JSONGrammar.grammar())
         #expect(text.contains("\"rules\""))
         #expect(text.contains("\"document\""))
-        // The text must itself be re-importable.
+        // The text must itself be re-importable into a semantically equivalent grammar.
         let g = try TreeSitterGrammarJSON.grammar(fromString: text, startRule: "document")
-        #expect(g == JSONGrammar.grammar())
+        let sample = #"{ "a": [1, true] }"#
+        #expect(try UTF8Parser(grammar: g).parse(Source(sample)).sExpression()
+            == UTF8Parser(grammar: JSONGrammar.grammar()).parse(Source(sample)).sExpression())
     }
 }
 
