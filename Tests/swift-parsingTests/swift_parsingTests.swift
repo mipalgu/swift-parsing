@@ -31,6 +31,12 @@ struct CLIParseTests {
     func availableEngines() {
         #expect(CLICore.availableEngines.contains(CLICore.defaultEngine))
     }
+
+    @Test("Every available engine parses JSON identically", arguments: CLICore.availableEngines)
+    func everyEngine(_ identifier: String) throws {
+        let (sexp, _) = try CLICore.parseJSON(#"{"a": 1}"#, engineIdentifier: identifier)
+        #expect(sexp == "(document (object (pair key: (string (string_content)) value: (number))))")
+    }
 }
 
 @Suite("CLI core: convert")

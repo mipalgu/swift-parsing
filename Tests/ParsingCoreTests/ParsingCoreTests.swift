@@ -214,6 +214,76 @@ struct CapabilityTests {
     }
 }
 
+@Suite("ParserElement")
+struct ParserElementTests {
+    @Test("UTF-8 code units: scalar value, width and ASCII classes")
+    func bytes() {
+        let zero: UInt8 = 0x30, f: UInt8 = 0x66, space: UInt8 = 0x20, z: UInt8 = 0x7A
+        #expect(zero.scalarValue == 0x30)
+        #expect(zero.utf8Width == 1)
+        #expect(zero.isASCIIDigit)
+        #expect(space.isASCIIWhitespace)
+        #expect(f.isASCIIHexDigit)
+        #expect(z.isASCIILetter)
+        #expect(!z.isASCIIDigit)
+        #expect(!(0x2B as UInt8).isASCIIHexDigit) // '+'
+    }
+
+    @Test("Unicode scalars: width by code-point range and classification")
+    func scalars() {
+        #expect(Unicode.Scalar("a").utf8Width == 1)
+        #expect(Unicode.Scalar("é").utf8Width == 2)
+        #expect(Unicode.Scalar("€").utf8Width == 3)
+        #expect(Unicode.Scalar("𝄞").utf8Width == 4)
+        #expect(Unicode.Scalar("7").isASCIIDigit)
+        #expect(Unicode.Scalar("\t").isASCIIWhitespace)
+        #expect(Unicode.Scalar("A").isASCIIHexDigit)
+        #expect(!Unicode.Scalar("é").isASCIILetter) // non-ASCII letter is not an ASCII letter
+    }
+
+    @Test("Characters: first-scalar value and total UTF-8 width")
+    func characters() {
+        #expect(Character("a").scalarValue == 0x61)
+        #expect(Character("a").utf8Width == 1)
+        #expect(Character("é").utf8Width == 2)
+        // A regional-indicator flag is one grapheme of two 4-byte scalars.
+        #expect(Character("🇦🇺").utf8Width == 8)
+        #expect(Character("5").isASCIIDigit)
+    }
+}
+
+@Suite("ParserInput")
+struct ParserInputTests {
+    @Test("Granularity names")
+    func names() {
+        #expect(Substring.UTF8View.granularityName == "utf8")
+        #expect(Substring.UnicodeScalarView.granularityName == "scalar")
+        #expect(Substring.granularityName == "grapheme")
+    }
+
+    @Test("UTF-8 view: make, elements and text")
+    func utf8View() {
+        let input = Substring.UTF8View.make(from: "ab")
+        #expect(Array(input) == [0x61, 0x62])
+        #expect(Substring.UTF8View.elements(of: "é") == Array("é".utf8))
+        #expect(Substring.UTF8View.text(of: input) == "ab")
+    }
+
+    @Test("Scalar view: make, elements and text")
+    func scalarView() {
+        let input = Substring.UnicodeScalarView.make(from: "aé")
+        #expect(Substring.UnicodeScalarView.elements(of: "aé") == Array("aé".unicodeScalars))
+        #expect(Substring.UnicodeScalarView.text(of: input) == "aé")
+    }
+
+    @Test("Grapheme view: make, elements and text")
+    func graphemeView() {
+        let input = Substring.make(from: "a🇦🇺")
+        #expect(Substring.elements(of: "a🇦🇺") == Array("a🇦🇺"))
+        #expect(Substring.text(of: input) == "a🇦🇺")
+    }
+}
+
 @Suite("Accessors")
 struct AccessorTests {
     @Test("tokenText is nil for internal nodes")

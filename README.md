@@ -6,48 +6,33 @@ A performant, cross-platform parsing framework for Swift, in the spirit of
 heavily object-oriented runtime.
 
 The library is built around a small, pure-Swift **protocol framework**: a single `ParserEngine`
-abstraction with multiple conforming engines behind it. Native engines (a recursive-descent
-interpreter today; table-driven GLR and ALL(\*) engines planned) sit alongside optional wrapper
-engines for existing toolkits (tree-sitter, ANTLR), each in its own module so the core never inherits
-a C runtime or the JVM. This makes the package a natural **differential-testing and benchmarking
-rig**: the same grammar and input can be run through every engine and their concrete syntax trees
-compared.
+abstraction with multiple conforming engines behind it. Native engines sit alongside optional wrapper
+engines for existing toolkits (such as tree-sitter), each in its own module so the core never inherits
+a C runtime or the JVM. The same grammar and input can be run through every engine and their concrete
+syntax trees compared.
 
-A canonical **grammar intermediate representation (IR)** sits at the hub. Surface grammar syntaxes,
-a Swift result-builder DSL, tree-sitter `grammar.json`, and (in future) ANTLR `.g4` and EBNF, are
-importers and exporters around that IR, which is what enables grammar round-tripping between formats.
+A canonical **grammar intermediate representation (IR)** sits at the hub. Surface grammar syntaxes, a
+Swift result-builder DSL and tree-sitter `grammar.json`, are importers and exporters around that IR,
+which is what enables grammars to round-trip between formats.
 
-## Status
-
-This is the first milestone: a proven vertical slice for the JSON language.
-
-| Area | State |
-| --- | --- |
-| `ParsingCore` | Red/green concrete syntax tree, `ParserEngine` protocol, Grammar IR, diagnostics |
-| `ParsingDSL` | Result-builder grammar authoring surface; JSON grammar |
-| `RecursiveDescent` | Native engine: parser-directed scanning, lossless and error-tolerant CST |
-| `GrammarImport` | tree-sitter `grammar.json` import and export, with round-tripping |
-| `swift-parsing` (CLI) | `parse` and `convert` subcommands (Swift Argument Parser) |
-
-Planned next: a tree-sitter wrapper engine plus a differential harness, table-driven GLR and ALL(\*)
-engines, incremental reparsing, an S-expression query language, ANTLR `.g4`/EBNF conversion, the full
-cross-platform target matrix (Linux/musl, WebAssembly, iOS, Windows), and a cross-language benchmark
-harness.
+The core (`ParsingCore`) is pure Swift with no `Foundation`, regular-expression, or existential
+dependency, and is generic over the input element granularity, so it suits embedded and WebAssembly
+targets as well as macOS, Linux, iOS and Windows.
 
 ## Requirements
 
 - Swift 6.2 or newer (the package builds in Swift 6 language mode with complete concurrency checking).
 
-## Building and testing
+## Installation
 
-```sh
-swift build
-swift test
-swift test --enable-code-coverage
+Add the package to your `Package.swift` dependencies:
+
+```swift
+.package(url: "https://github.com/mipalgu/swift-parsing", from: "0.1.0"),
 ```
 
-All reachable code is covered by tests; the only uncovered regions are `precondition` failure paths,
-which cannot be exercised without aborting the process.
+and add the products you need (`ParsingCore`, `ParsingDSL`, `RecursiveDescent`, `GrammarImport`,
+`Parsing`, or the opt-in `TreeSitterBackend`) to your target's dependencies.
 
 ## Command-line tool
 
@@ -70,9 +55,10 @@ For `{ "a": 1 }`, `parse` prints:
 
 ## Authoring a grammar
 
-Grammars are written in a Swift result-builder DSL that lowers to the Grammar IR. Rules whose names
-begin with an underscore are *hidden*: they contribute their children to the parent without creating
-a node of their own (mirroring tree-sitter's convention).
+Grammars are written in a Swift result-builder DSL that lowers to the Grammar IR. Token patterns are
+built from primitives (`Match.digit`, `Match.range`, `Match.oneOrMore`, …) rather than regular
+expressions. Rules whose names begin with an underscore are *hidden*: they contribute their children
+to the parent without creating a node of their own.
 
 ```swift
 import ParsingCore
@@ -86,26 +72,36 @@ let grammar = Grammar(name: "json", start: "document") {
             ref("true"); ref("false"); ref("null")
         }
     }
+    rule("number") { token(Match.oneOrMore(Match.digit)) }
     // ... and so on
 }
 ```
 
 ## Parsing programmatically
 
+Choose an input granularity by selecting the engine type: `UTF8Parser` (fastest, the default),
+`ScalarParser` (Unicode scalars), or `GraphemeParser` (extended grapheme clusters, the most faithful
+for composite characters).
+
 ```swift
 import ParsingCore
 import ParsingDSL
 import RecursiveDescent
 
-let engine = try RecursiveDescentEngine(grammar: JSONGrammar.grammar())
+let engine = try UTF8Parser(grammar: JSONGrammar.grammar())
 let result = engine.parse(Source(#"{ "a": 1 }"#))
-print(result.sExpression())          // the concrete syntax tree
-print(result.hasErrors)              // false
-print(result.tree.green.reconstructedText)  // round-trips exactly to the input
+print(result.sExpression())                  // the concrete syntax tree
+print(result.hasErrors)                      // false
+print(result.tree.green.reconstructedText)   // round-trips exactly to the input
 ```
 
 Engines never throw past their API. Malformed input still yields a complete tree containing `ERROR`
 and `MISSING` nodes, alongside diagnostics describing each problem.
+
+## Documentation
+
+Full API documentation and tutorials are published at
+<https://mipalgu.github.io/swift-parsing/>.
 
 ## Licence
 
