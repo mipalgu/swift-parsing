@@ -24,14 +24,17 @@ let package = Package(
         .library(name: "ParsingCore", targets: ["ParsingCore"]),
         .library(name: "ParsingDSL", targets: ["ParsingDSL"]),
         .library(name: "RecursiveDescent", targets: ["RecursiveDescent"]),
+        .library(name: "GrammarImport", targets: ["GrammarImport"]),
     ],
     targets: [
         .target(name: "ParsingCore", swiftSettings: strict),
         .target(name: "ParsingDSL", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "RecursiveDescent", dependencies: ["ParsingCore"], swiftSettings: strict),
+        .target(name: "GrammarImport", dependencies: ["ParsingCore"], swiftSettings: strict),
 
         .testTarget(name: "ParsingCoreTests", dependencies: ["ParsingCore"], swiftSettings: strict),
         .testTarget(name: "ParsingDSLTests", dependencies: ["ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "RecursiveDescentTests", dependencies: ["RecursiveDescent", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
+        .testTarget(name: "GrammarImportTests", dependencies: ["GrammarImport", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
     ]
 )
