@@ -1,0 +1,43 @@
+@Tutorial(time: 10) {
+    @Intro(title: "Parse a JSON document") {
+        Turn a string of JSON into a concrete syntax tree, read it, and handle malformed input.
+        @Image(source: "parsing-banner.svg", alt: "Parsing JSON")
+    }
+
+    @Section(title: "Create an engine and parse") {
+        @ContentAndMedia {
+            An engine pairs a grammar with an input granularity. Use the built-in JSON grammar and the
+            UTF-8 engine.
+            @Image(source: "parsing-banner.svg", alt: "Engine")
+        }
+
+        @Steps {
+            @Step {
+                Import the modules and create a `UTF8Parser` for the JSON grammar.
+                @Code(name: "Parse.swift", file: "parse-1.swift")
+            }
+            @Step {
+                Parse a document and print its tree as an S-expression.
+                @Code(name: "Parse.swift", file: "parse-2.swift")
+            }
+        }
+    }
+
+    @Section(title: "Handle errors and granularity") {
+        @ContentAndMedia {
+            Parsing is resilient, and the same grammar runs at any granularity.
+            @Image(source: "parsing-banner.svg", alt: "Resilience")
+        }
+
+        @Steps {
+            @Step {
+                Parse malformed input. The tree is still complete, with an `ERROR` node and diagnostics.
+                @Code(name: "Parse.swift", file: "parse-3.swift")
+            }
+            @Step {
+                Parse the same input at UTF-8, scalar, and grapheme granularity and confirm the trees match.
+                @Code(name: "Parse.swift", file: "parse-4.swift")
+            }
+        }
+    }
+}

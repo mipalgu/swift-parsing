@@ -1,0 +1,19 @@
+@Tutorials(name: "swift-parsing") {
+    @Intro(title: "Building parsers with swift-parsing") {
+        Parse text into a lossless concrete syntax tree, author grammars in the Swift DSL, and choose
+        the input granularity that fits your needs.
+        @Image(source: "parsing-banner.svg", alt: "swift-parsing")
+    }
+
+    @Chapter(name: "Parsing text") {
+        Parse a JSON document and inspect the resulting tree.
+        @Image(source: "parsing-banner.svg", alt: "Parsing")
+        @TutorialReference(tutorial: "doc:ParseJSON")
+    }
+
+    @Chapter(name: "Authoring grammars") {
+        Write a grammar in the Swift DSL using token-matcher primitives.
+        @Image(source: "parsing-banner.svg", alt: "Grammars")
+        @TutorialReference(tutorial: "doc:AuthorAGrammar")
+    }
+}

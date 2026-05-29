@@ -3,7 +3,7 @@
 /// `SourceSpan` is the stored coordinate used throughout the concrete syntax tree
 /// and diagnostics. It is deliberately a tiny value type holding only a start offset
 /// and a length so that nodes remain cheap to copy and `Sendable` for free. Reading
-/// the underlying bytes is done separately via a borrowed ``Span`` over the source
+/// the underlying bytes is done separately via a borrowed `Span` over the source
 /// (see ``Source``), which keeps storage compact while access stays memory-safe.
 public struct SourceSpan: Hashable, Sendable, CustomStringConvertible {
     /// The UTF-8 byte offset at which the span begins.

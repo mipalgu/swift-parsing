@@ -1,0 +1,38 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Author a grammar") {
+        Write a grammar in the Swift DSL using rules, references, and token-matcher primitives.
+        @Image(source: "parsing-banner.svg", alt: "Authoring a grammar")
+    }
+
+    @Section(title: "Define rules") {
+        @ContentAndMedia {
+            Build a grammar for a comma-separated list of integers.
+            @Image(source: "parsing-banner.svg", alt: "Rules")
+        }
+
+        @Steps {
+            @Step {
+                Define the `list` rule: a number followed by zero or more comma-separated numbers.
+                @Code(name: "Grammar.swift", file: "grammar-1.swift")
+            }
+            @Step {
+                Define the `number` terminal from matcher primitives, with no regular expression.
+                @Code(name: "Grammar.swift", file: "grammar-2.swift")
+            }
+        }
+    }
+
+    @Section(title: "Parse with the grammar") {
+        @ContentAndMedia {
+            Run the grammar through an engine.
+            @Image(source: "parsing-banner.svg", alt: "Parsing")
+        }
+
+        @Steps {
+            @Step {
+                Create a `UTF8Parser` and parse a list, printing the resulting tree.
+                @Code(name: "Grammar.swift", file: "grammar-3.swift")
+            }
+        }
+    }
+}

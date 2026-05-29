@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="540" viewBox="0 0 1200 540" role="img" aria-label="swift-parsing">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2a4a"/>
+      <stop offset="1" stop-color="#0d1326"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="540" fill="url(#bg)"/>
+  <text x="80" y="250" font-family="-apple-system, Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#f5f7fb">swift-parsing</text>
+  <text x="80" y="320" font-family="ui-monospace, Menlo, monospace" font-size="30" fill="#8fb3ff">(document (object (pair key: (string) value: (number))))</text>
+</svg>

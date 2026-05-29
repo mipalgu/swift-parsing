@@ -1,6 +1,6 @@
 import ParsingCore
 
-/// Converts between regular-expression strings and the Embedded-safe ``TokenMatcher``.
+/// Converts between regular-expression strings and the Embedded-safe `TokenMatcher`.
 ///
 /// The parser core deliberately has no `Regex` dependency, but tree-sitter `grammar.json` describes
 /// terminals as regular-expression `PATTERN` strings. This overlay type bridges the two: it *lowers* a
@@ -11,7 +11,7 @@ import ParsingCore
 public enum RegexLowering {
     // MARK: - Lower a regex string to a matcher
 
-    /// Lowers a regular-expression string to a ``TokenMatcher``.
+    /// Lowers a regular-expression string to a `TokenMatcher`.
     /// - Parameter regex: The regular expression (the supported subset).
     /// - Returns: An equivalent matcher, or `.literal(regex)` if the expression cannot be parsed.
     public static func matcher(fromRegex regex: String) -> TokenMatcher {
@@ -24,7 +24,7 @@ public enum RegexLowering {
 
     // MARK: - Render a matcher as a regex string
 
-    /// Renders a ``TokenMatcher`` as a regular-expression string.
+    /// Renders a `TokenMatcher` as a regular-expression string.
     /// - Parameter matcher: The matcher to render.
     /// - Returns: A regular expression matching the same input.
     public static func regexString(from matcher: TokenMatcher) -> String {

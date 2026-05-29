@@ -2,7 +2,7 @@ import Foundation
 import Parsing
 import ParsingCore
 
-/// Imports and exports tree-sitter `grammar.json` documents to and from the ``Grammar`` IR.
+/// Imports and exports tree-sitter `grammar.json` documents to and from the `Grammar` IR.
 ///
 /// `grammar.json` is the normalised grammar that `tree-sitter generate` produces from a
 /// `grammar.js` source. It is plain JSON (unlike `grammar.js`, which is JavaScript and requires a
@@ -64,7 +64,7 @@ public enum TreeSitterGrammarJSON {
     ///   - data: The `grammar.json` contents.
     ///   - startRule: The start rule name (tree-sitter treats the first declared rule as the start;
     ///     because JSON object order is not preserved on decoding, the caller supplies it explicitly).
-    /// - Returns: The imported ``Grammar``.
+    /// - Returns: The imported `Grammar`.
     /// - Throws: ``ImportError`` if the document is malformed or uses an unknown rule type.
     public static func grammar(from data: Data, startRule: String) throws -> Grammar {
         guard let top = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -94,7 +94,7 @@ public enum TreeSitterGrammarJSON {
     /// - Parameters:
     ///   - json: The `grammar.json` text.
     ///   - startRule: The start rule name.
-    /// - Returns: The imported ``Grammar``.
+    /// - Returns: The imported `Grammar`.
     /// - Throws: ``ImportError`` or a JSON decoding error.
     public static func grammar(fromString json: String, startRule: String) throws -> Grammar {
         try grammar(from: Data(json.utf8), startRule: startRule)

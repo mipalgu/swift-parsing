@@ -1,6 +1,6 @@
 /// An immutable parse input: the original text together with its UTF-8 byte view.
 ///
-/// Engines scan over the bytes through a borrowed ``Span`` (`bytes.span`), the safe,
+/// Engines scan over the bytes through a borrowed `Span` (`bytes.span`), the safe,
 /// bounds-checked alternative to `UnsafeBufferPointer`. The original `String` is
 /// retained so callers can recover exact text slices for any ``SourceSpan`` without
 /// the tree itself copying substrings.
