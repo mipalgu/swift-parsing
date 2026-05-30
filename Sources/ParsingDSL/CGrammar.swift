@@ -273,7 +273,7 @@ public enum CGrammar {
     /// - Parameter text: The keyword's exact text.
     /// - Returns: A boundary-guarded anonymous-token rule expression for the keyword.
     private static func keyword(_ text: String) -> RuleExpr {
-        token(Match.seq(Match.lit(text), keywordBoundary))
+        RuleExpr(.token(name: text, matcher: Match.seq(Match.lit(text), keywordBoundary), isNamed: false))
     }
 
     // MARK: - Structural grammar (left-recursion-free; all three engines)
