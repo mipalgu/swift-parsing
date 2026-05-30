@@ -16,6 +16,9 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
       - name: Build universal binary
         run: |
           swift build -c release --arch arm64 --arch x86_64 --product swift-parsing
@@ -33,7 +36,7 @@ jobs:
   linux-musl:
     name: Static Linux ${{ matrix.triple }}
     runs-on: ubuntu-24.04
-    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    container: swift:6.3.2-noble
     strategy:
       matrix:
         triple: [x86_64-swift-linux-musl, aarch64-swift-linux-musl]
@@ -84,7 +87,7 @@ jobs:
   wasm:
     name: WebAssembly module
     runs-on: ubuntu-24.04
-    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    container: swift:6.3.2-noble
     steps:
       - uses: actions/checkout@v4
       - name: Install WebAssembly SDK
