@@ -147,4 +147,19 @@ struct LuaPrecedenceTests {
         let result = parse("1 + 2 * 3 - 4 / 5 % 6 .. 7")
         #expect(!result.hasErrors)
     }
+
+    @Test("Concatenation binds tighter than shift: 1 << 2 .. 3 groups as 1 << (2 .. 3)")
+    func concatenationBindsTighterThanShift() {
+        // Per the Lua 5.4 manual (section 3.4.8), `..` (concatenation, level 8) binds tighter than the
+        // shift operators `<<` and `>>` (level 7). The grammar encodes this, and this regression guards it
+        // against a future incorrect swap: the `<<` is the top operator with the `2 .. 3` concatenation
+        // pulled into its right operand, so there are two operands and the last one nests.
+        let result = parse("1 << 2 .. 3")
+        #expect(operands(of: result.tree).count == 2)
+        #expect(lastOperandNests(result.tree))
+        // The contrasting `1 .. 2 << 3` groups the other way ((1 .. 2) << 3), giving a different tree, which
+        // confirms the precedence is genuinely ordered rather than the operators being interchangeable.
+        let swapped = parse("1 .. 2 << 3")
+        #expect(swapped.sExpression() != result.sExpression())
+    }
 }
