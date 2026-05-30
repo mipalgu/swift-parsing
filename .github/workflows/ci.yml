@@ -12,7 +12,7 @@ concurrency:
 
 env:
   # Cross-compilation SDKs are version-locked to the toolchain that produced them. Keep these in step
-  # with the Swift release used by the WASM, musl and embedded jobs.
+  # with the Swift release used by the WASM, musl, embedded and lint jobs.
   SWIFT_SDK_VERSION: "6.3.2"
 
 jobs:
@@ -48,10 +48,7 @@ jobs:
   linux:
     name: Linux (test)
     runs-on: ubuntu-24.04
-    # Swift 6.3.2, not the 6.2 baseline: swift-corelibs-foundation in 6.2 fails to copy the
-    # tree-sitter-json `queries` directory resource (NSCocoaError 512), which 6.3.x fixes. The
-    # package itself still targets the 6.2 tools-version.
-    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    container: swift:6.2-noble
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -67,11 +64,6 @@ jobs:
       - name: Test on iOS Simulator
         run: |
           DEVICE=$(xcrun simctl list devices available 'iPhone' | grep -Eo 'iPhone [0-9]+' | tail -1)
-          xcodebuild test \
-            -scheme SwiftParsing-Package \
-            -destination "platform=iOS Simulator,name=${DEVICE:-iPhone 16}" \
-            -enableCodeCoverage YES \
-            CODE_SIGNING_ALLOWED=NO | xcbeautify || \
           xcodebuild test \
             -scheme SwiftParsing-Package \
             -destination "platform=iOS Simulator,name=${DEVICE:-iPhone 16}" \
@@ -93,7 +85,7 @@ jobs:
         run: swift test
 
   wasm:
-    name: WebAssembly (build + WasmKit tests)
+    name: WebAssembly (test under WasmKit)
     runs-on: ubuntu-24.04
     container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
     steps:
@@ -103,19 +95,13 @@ jobs:
           swift sdk install \
             "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/wasm-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_wasm.artifactbundle.tar.gz" \
             --checksum a61f0584c93283589f8b2f42db05c1f9a182b506c2957271402992655591dd7c
-      - name: Build tests for WebAssembly
-        # The pure-Swift targets only; the C-backed tree-sitter backend does not target WASM.
-        run: |
-          swift build --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" --build-tests \
-            --target ParsingCoreTests --target ParsingTests --target ParsingDSLTests \
-            --target RecursiveDescentTests --target GrammarImportTests
-      - name: Run tests under WasmKit
-        run: |
-          WASM=$(find .build -name '*PackageTests.wasm' | head -1)
-          wasmkit run --dir . "$WASM" --testing-library swift-testing
+      - name: Test on WebAssembly
+        # The package is pure Swift, so the whole test suite cross-compiles to wasm32-wasi and runs
+        # under the WasmKit runtime bundled with the toolchain.
+        run: swift test --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm"
 
   musl:
-    name: Static Linux musl (build + run)
+    name: Static Linux musl (test)
     runs-on: ubuntu-24.04
     container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
     steps:
@@ -125,13 +111,8 @@ jobs:
           swift sdk install \
             "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/static-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz" \
             --checksum 3fd798bef6f4408f1ea5a6f94ce4d4052830c4326ab85ebc04f983f01b3da407
-      - name: Build static test binary
-        run: swift build --swift-sdk x86_64-swift-linux-musl --build-tests
-      - name: Run static test binary
-        run: |
-          BIN=$(swift build --swift-sdk x86_64-swift-linux-musl --show-bin-path)
-          RUNNER=$(find "$BIN" -name '*PackageTests.xctest' -o -name '*.test' | head -1)
-          "${RUNNER:-$BIN/SwiftParsingPackageTests.xctest}"
+      - name: Test as a static musl binary
+        run: swift test --swift-sdk x86_64-swift-linux-musl
 
   embedded:
     name: Embedded compile gate
@@ -145,9 +126,10 @@ jobs:
             "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/wasm-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_wasm.artifactbundle.tar.gz" \
             --checksum a61f0584c93283589f8b2f42db05c1f9a182b506c2957271402992655591dd7c
       - name: Compile ParsingCore for Embedded Swift
-        # The embedded-safe core must compile under the Embedded Swift subset. The host build already
-        # enforces the EmbeddedRestrictions diagnostic; this proves it links for a real embedded target.
-        run: swift build --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm-embedded" --product ParsingCore
+        # Only ParsingCore targets the Embedded Swift subset (the overlay modules use Foundation). The
+        # host build already enforces the EmbeddedRestrictions diagnostic; this proves the core links
+        # for a real embedded target.
+        run: swift build --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm-embedded" --target ParsingCore
 
   lint:
     name: swift-format lint
@@ -170,8 +152,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build documentation with warnings as errors
         # The doc plugins are gated behind DOCUMENTATION so normal builds skip their heavy graph.
-        # Restricting to the library targets keeps the build warning-clean (the executable's
-        # synthesised page and the C dependency's docs are not part of the public API surface).
         env:
           DOCUMENTATION: "1"
         run: |
@@ -179,7 +159,7 @@ jobs:
             generate-documentation --enable-experimental-combined-documentation \
             --warnings-as-errors --output-path ./docs-ci \
             --target ParsingCore --target Parsing --target ParsingDSL \
-            --target GrammarImport --target RecursiveDescent --target TreeSitterBackend
+            --target GrammarImport --target RecursiveDescent
 
   benchmark:
     name: Benchmarks

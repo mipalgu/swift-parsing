@@ -31,8 +31,11 @@ Add the package to your `Package.swift` dependencies:
 .package(url: "https://github.com/mipalgu/swift-parsing", from: "0.1.0"),
 ```
 
-and add the products you need (`ParsingCore`, `ParsingDSL`, `RecursiveDescent`, `GrammarImport`,
-`Parsing`, or the opt-in `TreeSitterBackend`) to your target's dependencies.
+and add the products you need (`ParsingCore`, `ParsingDSL`, `RecursiveDescent`, `GrammarImport`, or
+`Parsing`) to your target's dependencies. The opt-in tree-sitter backend, which wraps the C
+tree-sitter runtime behind the same `ParserEngine` protocol, lives in the companion
+[swift-parsing-tree-sitter](https://github.com/mipalgu/swift-parsing-tree-sitter) package so this one
+stays pure Swift.
 
 ## Command-line tool
 
