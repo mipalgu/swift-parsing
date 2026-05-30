@@ -36,7 +36,9 @@ public enum JSONGrammar {
                         seq {
                             ref("pair")
                             repeat0 {
-                                seq { ","; ref("pair") }
+                                seq {
+                                    ","; ref("pair")
+                                }
                             }
                         }
                     }
@@ -46,7 +48,11 @@ public enum JSONGrammar {
 
             rule("pair") {
                 seq {
-                    field("key") { choice { ref("string"); ref("number") } }
+                    field("key") {
+                        choice {
+                            ref("string"); ref("number")
+                        }
+                    }
                     ":"
                     field("value") { ref("_value") }
                 }
@@ -59,7 +65,9 @@ public enum JSONGrammar {
                         seq {
                             ref("_value")
                             repeat0 {
-                                seq { ","; ref("_value") }
+                                seq {
+                                    ","; ref("_value")
+                                }
                             }
                         }
                     }
@@ -81,16 +89,18 @@ public enum JSONGrammar {
 
             // number = -?(0 | [1-9][0-9]*)(.[0-9]+)?([eE][+-]?[0-9]+)?  — expressed with matchers, no regex.
             rule("number") {
-                token(Match.seq(
-                    Match.optional(Match.lit("-")),
-                    Match.oneOf(Match.lit("0"), Match.seq(Match.range("1", "9"), Match.zeroOrMore(Match.digit))),
-                    Match.optional(Match.seq(Match.lit("."), Match.oneOrMore(Match.digit))),
-                    Match.optional(Match.seq(
-                        Match.oneOf(Match.lit("e"), Match.lit("E")),
-                        Match.optional(Match.oneOf(Match.lit("+"), Match.lit("-"))),
-                        Match.oneOrMore(Match.digit)
+                token(
+                    Match.seq(
+                        Match.optional(Match.lit("-")),
+                        Match.oneOf(Match.lit("0"), Match.seq(Match.range("1", "9"), Match.zeroOrMore(Match.digit))),
+                        Match.optional(Match.seq(Match.lit("."), Match.oneOrMore(Match.digit))),
+                        Match.optional(
+                            Match.seq(
+                                Match.oneOf(Match.lit("e"), Match.lit("E")),
+                                Match.optional(Match.oneOf(Match.lit("+"), Match.lit("-"))),
+                                Match.oneOrMore(Match.digit)
+                            ))
                     ))
-                ))
             }
 
             rule("true") { "true" }

@@ -30,16 +30,24 @@ public protocol ParserInput: Collection, Sendable where Element: ParserElement, 
 }
 
 extension Substring.UTF8View: ParserInput {
+    /// The granularity name for the UTF-8 code-unit view.
     @inlinable public static var granularityName: String { "utf8" }
+    /// Views the text as its UTF-8 code units.
     @inlinable public static func make(from text: String) -> Substring.UTF8View { text[...].utf8 }
+    /// Decomposes a literal into its UTF-8 code units.
     @inlinable public static func elements(of string: String) -> [UInt8] { Array(string.utf8) }
+    /// Decodes a UTF-8 slice back into text.
     @inlinable public static func text(of slice: SubSequence) -> String { String(decoding: slice, as: UTF8.self) }
 }
 
 extension Substring.UnicodeScalarView: ParserInput {
+    /// The granularity name for the Unicode-scalar view.
     @inlinable public static var granularityName: String { "scalar" }
+    /// Views the text as its Unicode scalars.
     @inlinable public static func make(from text: String) -> Substring.UnicodeScalarView { text[...].unicodeScalars }
+    /// Decomposes a literal into its Unicode scalars.
     @inlinable public static func elements(of string: String) -> [Unicode.Scalar] { Array(string.unicodeScalars) }
+    /// Reassembles a scalar slice back into text.
     @inlinable public static func text(of slice: SubSequence) -> String {
         var view = String.UnicodeScalarView()
         view.append(contentsOf: slice)
@@ -48,8 +56,12 @@ extension Substring.UnicodeScalarView: ParserInput {
 }
 
 extension Substring: ParserInput {
+    /// The granularity name for the grapheme-cluster view.
     @inlinable public static var granularityName: String { "grapheme" }
+    /// Views the text as a substring of grapheme clusters.
     @inlinable public static func make(from text: String) -> Substring { text[...] }
+    /// Decomposes a literal into its grapheme-cluster characters.
     @inlinable public static func elements(of string: String) -> [Character] { Array(string) }
+    /// Converts a grapheme slice back into text.
     @inlinable public static func text(of slice: Substring) -> String { String(slice) }
 }

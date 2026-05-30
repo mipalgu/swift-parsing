@@ -31,7 +31,7 @@ public struct SourceSpan: Hashable, Sendable, CustomStringConvertible {
     public var isEmpty: Bool { length == 0 }
 
     /// The span expressed as a half-open `Range`.
-    public var range: Range<Int> { start ..< end }
+    public var range: Range<Int> { start..<end }
 
     /// An empty span positioned at `offset`.
     ///
@@ -51,5 +51,6 @@ public struct SourceSpan: Hashable, Sendable, CustomStringConvertible {
         return SourceSpan(start: lo, length: hi - lo)
     }
 
+    /// A half-open byte-range description, for example `[0..<5)`.
     public var description: String { "[\(start)..<\(end))" }
 }

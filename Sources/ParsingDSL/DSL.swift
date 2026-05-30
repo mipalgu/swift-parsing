@@ -129,7 +129,7 @@ public enum Match {
     ///   - high: The highest character (inclusive).
     /// - Returns: A scalar-range matcher.
     public static func range(_ low: Character, _ high: Character) -> TokenMatcher {
-        .scalarRange(low.scalarValue ... high.scalarValue)
+        .scalarRange(low.scalarValue...high.scalarValue)
     }
     /// Matches one element for which `matcher` does **not** match (one-element negation).
     /// - Parameter matcher: The matcher to negate.

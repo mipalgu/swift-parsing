@@ -17,7 +17,9 @@ import TreeSitterJSON
 /// named nodes and their field names (anonymous punctuation is dropped), which yields the same
 /// canonical S-expression a native engine produces for the same grammar.
 public struct TreeSitterEngine: ParserEngine {
+    /// The capabilities this engine guarantees: it recovers from errors but is not lossless.
     public static let capabilities: EngineCapabilities = [.errorRecovering]
+    /// The stable identifier under which this engine is registered.
     public static let identifier = "tree-sitter"
 
     private let language: Language

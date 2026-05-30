@@ -25,5 +25,6 @@ public struct SyntaxKind: Hashable, Sendable, CustomStringConvertible {
     /// The kind used for error-recovery nodes wrapping unexpected input.
     public static let error = SyntaxKind("ERROR", isNamed: true)
 
+    /// The kind's name, used as its textual description.
     public var description: String { name }
 }

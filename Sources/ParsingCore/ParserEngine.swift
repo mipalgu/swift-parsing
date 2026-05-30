@@ -4,6 +4,7 @@
 /// given engine (for example, only comparing incremental reparses against engines that
 /// declare ``incremental``).
 public struct EngineCapabilities: OptionSet, Sendable, Hashable {
+    /// The raw option-set bitmask backing this capability set.
     public let rawValue: Int
 
     /// Creates a capability set from its raw bitmask.

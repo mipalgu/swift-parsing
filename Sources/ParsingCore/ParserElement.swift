@@ -42,24 +42,30 @@ extension ParserElement {
 }
 
 extension UInt8: ParserElement {
+    /// The byte value of this UTF-8 code unit (`0...255`).
     @inlinable public var scalarValue: UInt32 { UInt32(self) }
+    /// A single UTF-8 code unit always contributes one byte.
     @inlinable public var utf8Width: Int { 1 }
 }
 
 extension Unicode.Scalar: ParserElement {
+    /// The scalar's Unicode code-point value.
     @inlinable public var scalarValue: UInt32 { value }
+    /// The number of UTF-8 bytes needed to encode this scalar.
     @inlinable public var utf8Width: Int {
         switch value {
-        case 0 ..< 0x80: 1
-        case 0x80 ..< 0x800: 2
-        case 0x800 ..< 0x1_0000: 3
+        case 0..<0x80: 1
+        case 0x80..<0x800: 2
+        case 0x800..<0x1_0000: 3
         default: 4
         }
     }
 }
 
 extension Character: ParserElement {
+    /// The value of this character's first Unicode scalar (`0` for the empty case, which cannot occur).
     @inlinable public var scalarValue: UInt32 { unicodeScalars.first?.value ?? 0 }
+    /// The total UTF-8 byte width of every scalar in this extended grapheme cluster.
     @inlinable public var utf8Width: Int {
         var total = 0
         for scalar in unicodeScalars { total += scalar.utf8Width }

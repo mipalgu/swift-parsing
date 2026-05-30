@@ -15,8 +15,9 @@ enum CLICore {
 
         var description: String {
             switch self {
-            case let .unknownEngine(name): "unknown engine '\(name)' (available: \(availableEngines.joined(separator: ", ")))"
-            case let .unknownTarget(name): "unknown conversion target '\(name)' (available: json)"
+            case .unknownEngine(let name):
+                "unknown engine '\(name)' (available: \(availableEngines.joined(separator: ", ")))"
+            case .unknownTarget(let name): "unknown conversion target '\(name)' (available: json)"
             }
         }
     }
@@ -54,7 +55,9 @@ enum CLICore {
     ///   - engineIdentifier: The engine to use.
     /// - Returns: The S-expression rendering and the formatted diagnostics (one per line).
     /// - Throws: ``CLIError/unknownEngine(_:)`` or an engine construction error.
-    static func parseJSON(_ text: String, engineIdentifier: String) throws -> (sExpression: String, diagnostics: [String]) {
+    static func parseJSON(_ text: String, engineIdentifier: String) throws -> (
+        sExpression: String, diagnostics: [String]
+    ) {
         let engine = try engine(engineIdentifier, grammar: JSONGrammar.grammar())
         let result = engine.parse(Source(text))
         return (result.sExpression(), result.diagnostics.map(\.description))

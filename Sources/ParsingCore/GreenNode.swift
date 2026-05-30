@@ -114,13 +114,13 @@ public final class GreenNode: Sendable {
 
     /// The token text, or `nil` for internal nodes.
     public var tokenText: String? {
-        if case let .token(text, _, _) = payload { return text }
+        if case .token(let text, _, _) = payload { return text }
         return nil
     }
 
     /// The child slots, or an empty array for tokens.
     public var children: [GreenChild] {
-        if case let .node(children) = payload { return children }
+        if case .node(let children) = payload { return children }
         return []
     }
 
@@ -137,9 +137,9 @@ public final class GreenNode: Sendable {
     /// is the test of an engine's losslessness.
     public var reconstructedText: String {
         switch payload {
-        case let .token(text, leading, trailing):
+        case .token(let text, let leading, let trailing):
             return leading + text + trailing
-        case let .node(children):
+        case .node(let children):
             var out = ""
             for child in children { out += child.node.reconstructedText }
             return out

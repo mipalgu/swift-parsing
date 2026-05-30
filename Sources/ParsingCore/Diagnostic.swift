@@ -45,5 +45,6 @@ public struct Diagnostic: Hashable, Sendable, CustomStringConvertible {
         Diagnostic(severity: .error, message: message, span: span)
     }
 
+    /// A human-readable rendering combining severity, message, and source span.
     public var description: String { "\(severity): \(message) \(span)" }
 }

@@ -15,7 +15,9 @@ import ParsingCore
 /// trailing input becomes an `ERROR` node and a wholly unparseable input yields a `MISSING` node, each
 /// with a diagnostic.
 public struct RecursiveDescentEngine<Input: ParserInput>: ParserEngine {
+    /// The capabilities this engine guarantees: lossless trees with error recovery.
     public static var capabilities: EngineCapabilities { [.lossless, .errorRecovering] }
+    /// The stable identifier under which this engine is registered, suffixed with the input granularity.
     public static var identifier: String { "rd-\(Input.granularityName)" }
 
     private let grammar: Grammar
@@ -73,7 +75,7 @@ private final class Parser<Input: ParserInput> {
     /// Advances the cursor to `end`, accumulating the consumed bytes for diagnostics.
     private func advance(to end: Input.Index) {
         if end != index {
-            byteOffset += Input.text(of: input[index ..< end]).utf8.count
+            byteOffset += Input.text(of: input[index..<end]).utf8.count
             index = end
         }
     }
@@ -94,8 +96,9 @@ private final class Parser<Input: ParserInput> {
         let trailingTrivia = consumeTrivia()
         if index != input.endIndex {
             diagnostics.append(.error("unexpected trailing input", at: .empty(at: byteOffset)))
-            let junk = Input.text(of: input[index ..< input.endIndex])
-            let errorToken = GreenNode.token(SyntaxKind("<error>", isNamed: false), text: junk, leadingTrivia: trailingTrivia)
+            let junk = Input.text(of: input[index..<input.endIndex])
+            let errorToken = GreenNode.token(
+                SyntaxKind("<error>", isNamed: false), text: junk, leadingTrivia: trailingTrivia)
             let errorNode = GreenNode.errorNode(children: [.init(node: errorToken)])
             documentNode = GreenNode.node(documentNode.kind, children: documentNode.children + [.init(node: errorNode)])
         } else if !trailingTrivia.isEmpty {
@@ -109,58 +112,58 @@ private final class Parser<Input: ParserInput> {
 
     private func parse(_ rule: Rule) throws -> [GreenChild] {
         switch rule {
-        case let .token(name, matcher, isNamed):
+        case .token(let name, let matcher, let isNamed):
             let saved = mark()
             let triviaStart = index
             consumeTrivia()
-            let leading = Input.text(of: input[triviaStart ..< index])
+            let leading = Input.text(of: input[triviaStart..<index])
             guard let end = match(matcher, at: index) else {
                 reset(to: saved)
                 throw ParseMismatch()
             }
-            let text = Input.text(of: input[index ..< end])
+            let text = Input.text(of: input[index..<end])
             advance(to: end)
             let token = GreenNode.token(SyntaxKind(name, isNamed: isNamed), text: text, leadingTrivia: leading)
             return [GreenChild(node: token)]
 
-        case let .reference(name):
+        case .reference(let name):
             guard let body = grammar.rules[name] else { throw ParseMismatch() }
             let kids = try parse(body)
-            if name.hasPrefix("_") { return kids } // hidden rule: splice
+            if name.hasPrefix("_") { return kids }  // hidden rule: splice
             return [GreenChild(node: .node(SyntaxKind(name, isNamed: true), children: kids))]
 
-        case let .sequence(rules):
+        case .sequence(let rules):
             var kids: [GreenChild] = []
             for r in rules { kids += try parse(r) }
             return kids
 
-        case let .choice(alternatives):
+        case .choice(let alternatives):
             for alternative in alternatives {
                 let saved = mark()
                 do { return try parse(alternative) } catch { reset(to: saved) }
             }
             throw ParseMismatch()
 
-        case let .optional(sub):
+        case .optional(let sub):
             let saved = mark()
             do { return try parse(sub) } catch {
                 reset(to: saved)
                 return []
             }
 
-        case let .repeatZeroOrMore(sub):
+        case .repeatZeroOrMore(let sub):
             return try repeating(sub, atLeastOne: false)
 
-        case let .repeatOneOrMore(sub):
+        case .repeatOneOrMore(let sub):
             return try repeating(sub, atLeastOne: true)
 
-        case let .field(name, sub):
+        case .field(let name, let sub):
             let kids = try parse(sub)
             if kids.count == 1 { return [GreenChild(field: name, node: kids[0].node)] }
             let group = GreenNode.node(SyntaxKind("group", isNamed: false), children: kids)
             return [GreenChild(field: name, node: group)]
 
-        case let .precedence(_, _, sub):
+        case .precedence(_, _, let sub):
             return try parse(sub)
         }
     }
@@ -172,7 +175,7 @@ private final class Parser<Input: ParserInput> {
             let saved = mark()
             do {
                 let next = try parse(sub)
-                if index == saved.index { break } // guard against zero-width loops
+                if index == saved.index { break }  // guard against zero-width loops
                 kids += next
             } catch {
                 reset(to: saved)
@@ -197,13 +200,13 @@ private final class Parser<Input: ParserInput> {
             }
             break
         }
-        return Input.text(of: input[start ..< index])
+        return Input.text(of: input[start..<index])
     }
 
     /// Matches a token matcher at a position, returning the end index of the longest match, or `nil`.
     private func match(_ matcher: TokenMatcher, at start: Input.Index) -> Input.Index? {
         switch matcher {
-        case let .literal(text):
+        case .literal(let text):
             var cursor = start
             for element in Input.elements(of: text) {
                 guard cursor != input.endIndex, input[cursor] == element else { return nil }
@@ -215,19 +218,19 @@ private final class Parser<Input: ParserInput> {
             guard start != input.endIndex else { return nil }
             return input.index(after: start)
 
-        case let .scalarRange(range):
+        case .scalarRange(let range):
             guard start != input.endIndex, range.contains(input[start].scalarValue) else { return nil }
             return input.index(after: start)
 
-        case let .builtin(builtinClass):
+        case .builtin(let builtinClass):
             guard start != input.endIndex, classify(input[start], builtinClass) else { return nil }
             return input.index(after: start)
 
-        case let .negated(inner):
+        case .negated(let inner):
             guard start != input.endIndex, match(inner, at: start) == nil else { return nil }
             return input.index(after: start)
 
-        case let .sequence(matchers):
+        case .sequence(let matchers):
             var cursor = start
             for matcher in matchers {
                 guard let next = match(matcher, at: cursor) else { return nil }
@@ -235,13 +238,13 @@ private final class Parser<Input: ParserInput> {
             }
             return cursor
 
-        case let .alternation(matchers):
+        case .alternation(let matchers):
             for matcher in matchers {
                 if let next = match(matcher, at: start) { return next }
             }
             return nil
 
-        case let .repeated(min, max, inner):
+        case .repeated(let min, let max, let inner):
             var cursor = start
             var count = 0
             while max == nil || count < max! {

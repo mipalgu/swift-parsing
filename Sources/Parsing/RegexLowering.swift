@@ -29,26 +29,26 @@ public enum RegexLowering {
     /// - Returns: A regular expression matching the same input.
     public static func regexString(from matcher: TokenMatcher) -> String {
         switch matcher {
-        case let .literal(text):
+        case .literal(let text):
             return text.map(escape).joined()
         case .anyElement:
             return "."
-        case let .scalarRange(range):
+        case .scalarRange(let range):
             return "[\(escapeScalar(range.lowerBound))-\(escapeScalar(range.upperBound))]"
-        case let .builtin(builtinClass):
+        case .builtin(let builtinClass):
             switch builtinClass {
             case .digit: return "\\d"
             case .whitespace: return "\\s"
             case .hexDigit: return "[0-9A-Fa-f]"
             case .letter: return "[A-Za-z]"
             }
-        case let .negated(inner):
+        case .negated(let inner):
             return "[^\(classBody(of: inner))]"
-        case let .sequence(matchers):
+        case .sequence(let matchers):
             return matchers.map(groupedRegex).joined()
-        case let .alternation(matchers):
+        case .alternation(let matchers):
             return "(?:\(matchers.map { regexString(from: $0) }.joined(separator: "|")))"
-        case let .repeated(min, max, inner):
+        case .repeated(let min, let max, let inner):
             return groupedRegex(inner) + quantifier(min: min, max: max)
         }
     }
@@ -58,7 +58,7 @@ public enum RegexLowering {
     private static func groupedRegex(_ matcher: TokenMatcher) -> String {
         let needsGroup: Bool
         switch matcher {
-        case let .literal(text): needsGroup = text.count > 1
+        case .literal(let text): needsGroup = text.count > 1
         case .sequence: needsGroup = true
         default: needsGroup = false
         }
@@ -69,9 +69,9 @@ public enum RegexLowering {
     /// The interior of a character class for a negated matcher (`[^ ... ]`).
     private static func classBody(of matcher: TokenMatcher) -> String {
         switch matcher {
-        case let .literal(text): return text.map(escapeInClass).joined()
-        case let .scalarRange(range): return "\(escapeScalar(range.lowerBound))-\(escapeScalar(range.upperBound))"
-        case let .alternation(matchers): return matchers.map(classBody).joined()
+        case .literal(let text): return text.map(escapeInClass).joined()
+        case .scalarRange(let range): return "\(escapeScalar(range.lowerBound))-\(escapeScalar(range.upperBound))"
+        case .alternation(let matchers): return matchers.map(classBody).joined()
         default: return escape(Character(regexString(from: matcher)))
         }
     }
@@ -81,20 +81,23 @@ public enum RegexLowering {
         case (0, .none): return "*"
         case (1, .none): return "+"
         case (0, .some(1)): return "?"
-        case let (m, .none): return "{\(m),}"
-        case let (m, .some(n)) where m == n: return "{\(m)}"
-        case let (m, .some(n)): return "{\(m),\(n)}"
+        case (let m, .none): return "{\(m),}"
+        case (let m, .some(let n)) where m == n: return "{\(m)}"
+        case (let m, .some(let n)): return "{\(m),\(n)}"
         }
     }
 
-    private static let metacharacters: Set<Character> = [".", "[", "]", "(", ")", "{", "}", "*", "+", "?", "|", "\\", "^", "$", "/"]
+    private static let metacharacters: Set<Character> = [
+        ".", "[", "]", "(", ")", "{", "}", "*", "+", "?", "|", "\\", "^", "$", "/",
+    ]
 
     private static func escape(_ character: Character) -> String {
         metacharacters.contains(character) ? "\\\(character)" : String(character)
     }
 
     private static func escapeInClass(_ character: Character) -> String {
-        (character == "]" || character == "\\" || character == "^" || character == "-") ? "\\\(character)" : String(character)
+        (character == "]" || character == "\\" || character == "^" || character == "-")
+            ? "\\\(character)" : String(character)
     }
 
     private static func escapeScalar(_ value: UInt32) -> String {
@@ -142,7 +145,7 @@ private struct RegexParser {
     private func mergeLiterals(_ pieces: [TokenMatcher]) -> [TokenMatcher] {
         var result: [TokenMatcher] = []
         for piece in pieces {
-            if case let .literal(text) = piece, case let .literal(previous)? = result.last {
+            if case .literal(let text) = piece, case .literal(let previous)? = result.last {
                 result[result.count - 1] = .literal(previous + text)
             } else {
                 result.append(piece)
@@ -163,7 +166,7 @@ private struct RegexParser {
     }
 
     private mutating func parseBraceQuantifier(_ atom: TokenMatcher) -> TokenMatcher? {
-        position += 1 // consume '{'
+        position += 1  // consume '{'
         var digits = ""
         while let character = peek(), character.isNumber { digits.append(advance()) }
         guard let min = Int(digits) else { return nil }
@@ -209,16 +212,16 @@ private struct RegexParser {
     }
 
     private mutating func parseCharacterClass() -> TokenMatcher? {
-        position += 1 // consume '['
+        position += 1  // consume '['
         let negated = peek() == "^"
         if negated { position += 1 }
         var members: [TokenMatcher] = []
         while let character = peek(), character != "]" {
             let low = readClassChar()
             if peek() == "-", position + 1 < characters.count, characters[position + 1] != "]" {
-                position += 1 // consume '-'
+                position += 1  // consume '-'
                 let high = readClassChar()
-                members.append(.scalarRange(low.scalarValue ... high.scalarValue))
+                members.append(.scalarRange(low.scalarValue...high.scalarValue))
             } else {
                 members.append(.literal(String(low)))
             }

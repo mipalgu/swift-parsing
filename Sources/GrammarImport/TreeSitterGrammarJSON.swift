@@ -160,7 +160,7 @@ public enum TreeSitterGrammarJSON {
         switch type {
         case Schema.string: return (node[Schema.value] as? String).map(TokenMatcher.literal)
         case Schema.pattern: return (node[Schema.value] as? String).map(RegexLowering.matcher(fromRegex:))
-        default: return nil // e.g. SYMBOL extras (comments) cannot be represented as token matchers
+        default: return nil  // e.g. SYMBOL extras (comments) cannot be represented as token matchers
         }
     }
 
@@ -197,37 +197,38 @@ public enum TreeSitterGrammarJSON {
 
     private static func exportRule(_ rule: Rule) -> [String: Any] {
         switch rule {
-        case let .reference(name):
+        case .reference(let name):
             return [Schema.type: Schema.symbol, Schema.name: name]
-        case let .token(_, matcher, _):
-            if case let .literal(text) = matcher {
+        case .token(_, let matcher, _):
+            if case .literal(let text) = matcher {
                 return [Schema.type: Schema.string, Schema.value: text]
             }
             return [Schema.type: Schema.pattern, Schema.value: RegexLowering.regexString(from: matcher)]
-        case let .sequence(rules):
+        case .sequence(let rules):
             return [Schema.type: Schema.sequence, Schema.members: rules.map(exportRule)]
-        case let .choice(rules):
+        case .choice(let rules):
             return [Schema.type: Schema.choice, Schema.members: rules.map(exportRule)]
-        case let .optional(sub):
+        case .optional(let sub):
             return [Schema.type: Schema.choice, Schema.members: [exportRule(sub), [Schema.type: Schema.blank]]]
-        case let .repeatZeroOrMore(sub):
+        case .repeatZeroOrMore(let sub):
             return [Schema.type: Schema.repeatZeroOrMore, Schema.content: exportRule(sub)]
-        case let .repeatOneOrMore(sub):
+        case .repeatOneOrMore(let sub):
             return [Schema.type: Schema.repeatOneOrMore, Schema.content: exportRule(sub)]
-        case let .field(name, sub):
+        case .field(let name, let sub):
             return [Schema.type: Schema.field, Schema.name: name, Schema.content: exportRule(sub)]
-        case let .precedence(level, associativity, sub):
-            let type = switch associativity {
-            case .left: Schema.precedenceLeft
-            case .right: Schema.precedenceRight
-            case .none: Schema.precedence
-            }
+        case .precedence(let level, let associativity, let sub):
+            let type =
+                switch associativity {
+                case .left: Schema.precedenceLeft
+                case .right: Schema.precedenceRight
+                case .none: Schema.precedence
+                }
             return [Schema.type: type, Schema.value: level, Schema.content: exportRule(sub)]
         }
     }
 
     private static func exportExtra(_ matcher: TokenMatcher) -> [String: Any] {
-        if case let .literal(text) = matcher {
+        if case .literal(let text) = matcher {
             return [Schema.type: Schema.string, Schema.value: text]
         }
         return [Schema.type: Schema.pattern, Schema.value: RegexLowering.regexString(from: matcher)]
