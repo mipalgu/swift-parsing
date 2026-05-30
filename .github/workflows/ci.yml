@@ -105,8 +105,11 @@ jobs:
             "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/wasm-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_wasm.artifactbundle.tar.gz" \
             --checksum a61f0584c93283589f8b2f42db05c1f9a182b506c2957271402992655591dd7c
       - name: Build for WebAssembly
-        # The whole package, including the CLI executable, cross-compiles to wasm32-wasi.
-        run: swift build --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm"
+        # The whole package, including the CLI executable, cross-compiles to wasm32-wasi. A larger
+        # linear-memory stack than the WebAssembly default is requested via the wasm-ld stack-size flag,
+        # because the deeply tiered C expression grammar recurses far enough to exhaust the small default
+        # stack at runtime (the native, Linux and Windows runners have ample stacks).
+        run: swift build --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" -Xlinker -z -Xlinker stack-size=16777216
       - name: Test on WebAssembly
         # Run the library test suites under the WasmKit runtime bundled with the toolchain. The
         # executable's test target is excluded because an executable cannot be @testable-imported when
@@ -116,6 +119,7 @@ jobs:
           EXCLUDE_EXECUTABLE_TESTS: "1"
         run: |
           EXCLUDE_EXECUTABLE_TESTS=1 swift test --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" \
+            -Xlinker -z -Xlinker stack-size=16777216 \
             2>&1 | tee wasm-test.log || true
           grep -qE 'Test run with [0-9]+ tests.*passed' wasm-test.log
           if grep -qiE '[1-9][0-9]* (test|tests) failed|recorded an issue|✘' wasm-test.log; then
