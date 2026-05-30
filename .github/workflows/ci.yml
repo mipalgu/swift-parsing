@@ -113,16 +113,18 @@ jobs:
         # cross-compiling. WasmKit raises a trap while tearing the module down after a successful run,
         # so success is judged from the test report rather than the process exit code.
         #
-        # The CTests suite is skipped here only: the C grammar encodes fifteen precedence tiers as nested
-        # rules, so a single expression recurses about fifteen rule levels deep, which exceeds the WasmKit
-        # interpreter's call-frame budget (a runtime limit, distinct from the linear-memory stack) and
-        # traps with "call stack exhausted". C is exercised in full on the native, Linux and Windows
-        # runners, and the engines' WebAssembly compatibility is covered by the JSON and Lua suites.
+        # The CTests target is omitted from the WebAssembly build via EXCLUDE_C_TESTS (see Package.swift):
+        # the C grammar encodes fifteen precedence tiers as nested rules, so a single expression recurses
+        # about fifteen rule levels deep, which exceeds the WasmKit interpreter's call-frame budget (a
+        # runtime limit distinct from the linear-memory stack) and traps with "call stack exhausted". C is
+        # exercised in full on the native, Linux and Windows runners, and the engines' WebAssembly
+        # compatibility is covered by the JSON and Lua suites. (A test-time --skip cannot be used: with the
+        # wasm SDK it triggers a native exec of the wasm binary for enumeration, which fails.)
         env:
           EXCLUDE_EXECUTABLE_TESTS: "1"
+          EXCLUDE_C_TESTS: "1"
         run: |
-          EXCLUDE_EXECUTABLE_TESTS=1 swift test --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" \
-            --skip CTests \
+          EXCLUDE_EXECUTABLE_TESTS=1 EXCLUDE_C_TESTS=1 swift test --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" \
             2>&1 | tee wasm-test.log || true
           grep -qE 'Test run with [0-9]+ tests.*passed' wasm-test.log
           if grep -qiE '[1-9][0-9]* (test|tests) failed|recorded an issue|✘' wasm-test.log; then

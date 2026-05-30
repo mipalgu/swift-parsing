@@ -81,11 +81,6 @@ let package = Package(
             swiftSettings: strict
         ),
         .testTarget(
-            name: "CTests",
-            dependencies: ["ParsingDSL", "ParsingCore", "RecursiveDescent", "SwiftGLR", "SwiftALLStar", "Query"],
-            swiftSettings: strict
-        ),
-        .testTarget(
             name: "LookaheadTests",
             dependencies: ["ParsingCore", "ParsingDSL", "RecursiveDescent", "SwiftGLR", "SwiftALLStar"],
             swiftSettings: strict
@@ -100,6 +95,21 @@ let package = Package(
 if Context.environment["EXCLUDE_EXECUTABLE_TESTS"] == nil {
     package.targets.append(
         .testTarget(name: "swift-parsingTests", dependencies: ["swift-parsing"], swiftSettings: strict)
+    )
+}
+
+// The C grammar encodes fifteen precedence tiers as nested rules, so parsing a single expression recurses
+// about fifteen rule levels deep. That exceeds the WasmKit interpreter's call-frame budget (a runtime limit
+// distinct from the linear-memory stack), trapping with "call stack exhausted", so the C test target is
+// omitted when EXCLUDE_C_TESTS is set, as the WebAssembly job does. C is exercised in full on the native,
+// Linux and Windows runners; the engines' WebAssembly compatibility stays covered by the JSON and Lua suites.
+if Context.environment["EXCLUDE_C_TESTS"] == nil {
+    package.targets.append(
+        .testTarget(
+            name: "CTests",
+            dependencies: ["ParsingDSL", "ParsingCore", "RecursiveDescent", "SwiftGLR", "SwiftALLStar", "Query"],
+            swiftSettings: strict
+        )
     )
 }
 
