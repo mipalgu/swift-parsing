@@ -106,7 +106,9 @@ enum LeftRecursionRewriter {
             if let suffix = recursiveSuffix(of: alternative, ruleName: name) {
                 let (associativity, declaredLevel) = precedenceOf(alternative, fallback: level)
                 let predicate = Rule.precedence(level: declaredLevel, associativity: associativity, .sequence([]))
-                operators.append(.sequence([predicate] + suffix))
+                let climbed = withRightOperandEnterPrecedence(
+                    suffix, ruleName: name, level: declaredLevel, associativity: associativity)
+                operators.append(.sequence([predicate] + climbed))
             } else {
                 primary.append(alternative)
             }
@@ -133,6 +135,25 @@ enum LeftRecursionRewriter {
             return nil
         }
         return Array(rules.dropFirst())
+    }
+
+    /// Wraps the suffix's trailing self-reference (the right operand) with its enter-at precedence.
+    ///
+    /// Precedence-climbing is realised by re-entering the rule at a higher minimum precedence for the right
+    /// operand: `level + 1` for a left-associative operator (so an equal-precedence operator to the right is
+    /// refused, forcing left-leaning grouping) and `level` for a right-associative or non-associative
+    /// operator (so an equal-precedence operator is absorbed on the right, forcing right-leaning grouping).
+    /// The enter-at precedence is recorded by wrapping the trailing self-reference in a `.precedence` node
+    /// the ATN builder turns into the right-operand rule edge's `enterPrecedence`. Postfix operator forms
+    /// (`A op`, with no trailing self-reference) are left unchanged.
+    private static func withRightOperandEnterPrecedence(
+        _ suffix: [Rule], ruleName: String, level: Int, associativity: Associativity
+    ) -> [Rule] {
+        guard let last = suffix.last, case .reference(ruleName) = last else { return suffix }
+        let enterAt = associativity == .left ? level + 1 : level
+        var wrapped = suffix
+        wrapped[wrapped.count - 1] = .precedence(level: enterAt, associativity: .none, last)
+        return wrapped
     }
 
     /// The declared precedence and associativity of an alternative, or a fallback level if undeclared.

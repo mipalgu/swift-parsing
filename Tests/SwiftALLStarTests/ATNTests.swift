@@ -53,7 +53,7 @@ struct ATNTests {
         var valueFieldSeen = false
         for state in atn.states where state.rule == "pair" {
             for transition in state.transitions {
-                if case .rule(_, _, _, _, _, let field, _) = transition {
+                if case .rule(_, _, _, _, _, let field, _, _) = transition {
                     if field == "key" { keyFieldSeen = true }
                     if field == "value" { valueFieldSeen = true }
                 }

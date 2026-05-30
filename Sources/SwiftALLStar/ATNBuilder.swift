@@ -33,6 +33,12 @@ enum ATNBuilder {
         var nextDecision: DecisionID = 0
         /// The field label currently in force, applied to the next emitted token or rule edge.
         var currentField: String?
+        /// The enter-at precedence currently in force, applied to the next emitted rule edge.
+        ///
+        /// Set by a `.precedence` wrapper around a rule's self-reference (the right operand of a rewritten
+        /// left-recursive operator alternative) and consumed once, like ``currentField``. `nil` everywhere
+        /// else, so ordinary rule calls carry no enter-at precedence.
+        var pendingEnterPrecedence: Int?
 
         init(grammar: Grammar) {
             self.grammar = grammar
@@ -87,13 +93,16 @@ enum ATNBuilder {
             case .reference(let name):
                 let field = currentField
                 currentField = nil
+                let enterPrecedence = pendingEnterPrecedence
+                pendingEnterPrecedence = nil
                 let q = newState(rule: owner)
                 let isDefined = grammar.rules[name] != nil
                 let callee = ruleEntry[name] ?? q
                 addTransition(
                     .rule(
                         callee: callee, follow: q, ruleName: name,
-                        isHidden: name.hasPrefix("_"), isDefined: isDefined, field: field, target: q),
+                        isHidden: name.hasPrefix("_"), isDefined: isDefined, field: field, target: q,
+                        enterPrecedence: enterPrecedence),
                     from: from)
                 return q
 
@@ -164,6 +173,16 @@ enum ATNBuilder {
                     addTransition(.predicate(predicateID, target: q), from: from)
                     return q
                 }
+                // The rewriter wraps the trailing self-reference (the right operand of a left-recursive
+                // operator alternative) in a precedence node carrying its enter-at precedence. Record that
+                // precedence on the rule edge so the right operand re-enters at a higher minimum, which is
+                // what realises operator binding and associativity.
+                if case .reference(owner) = sub {
+                    pendingEnterPrecedence = level
+                    let q = emit(sub, from: from, rule: owner)
+                    pendingEnterPrecedence = nil
+                    return q
+                }
                 return emit(sub, from: from, rule: owner)
             }
         }
@@ -192,7 +211,7 @@ enum ATNBuilder {
                 case .epsilon(let t), .action(let t), .predicate(_, let t):
                     if t == target { return true }
                     if reachesEntryWithoutConsuming(from: t, target: target, visited: seen) { return true }
-                case .rule(let callee, _, _, _, _, _, _):
+                case .rule(let callee, _, _, _, _, _, _, _):
                     if callee == target { return true }
                     if reachesEntryWithoutConsuming(from: callee, target: target, visited: seen) { return true }
                 }

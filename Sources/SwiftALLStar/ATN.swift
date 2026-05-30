@@ -20,9 +20,14 @@ enum ATNTransition: Sendable {
     /// Consumes one logical token matching `matcher`, carrying the metadata to build its CST leaf.
     case atom(matcher: TokenMatcher, isNamed: Bool, name: String, field: String?, target: ATNStateID)
     /// Calls the submachine for `ruleName`: jumps to `callee`, returning to `follow` at its stop state.
+    ///
+    /// `enterPrecedence`, when non-`nil`, is the minimum precedence the callee submachine must enter at; it
+    /// is set only on the right-operand rule call of a rewritten directly left-recursive rule, where it
+    /// realises operator binding and associativity. Every ordinary rule call leaves it `nil`, so the callee
+    /// enters at the base precedence `0`.
     case rule(
         callee: ATNStateID, follow: ATNStateID, ruleName: String, isHidden: Bool, isDefined: Bool, field: String?,
-        target: ATNStateID)
+        target: ATNStateID, enterPrecedence: Int? = nil)
     /// A free epsilon move to `target`.
     case epsilon(target: ATNStateID)
     /// A semantic-mutator move (a no-op for this engine), treated as epsilon.
@@ -34,7 +39,7 @@ enum ATNTransition: Sendable {
     var target: ATNStateID {
         switch self {
         case .atom(_, _, _, _, let t): t
-        case .rule(_, _, _, _, _, _, let t): t
+        case .rule(_, _, _, _, _, _, let t, _): t
         case .epsilon(let t): t
         case .action(let t): t
         case .predicate(_, let t): t
@@ -72,9 +77,10 @@ struct Predicate: Sendable {
 
     /// Evaluates the predicate against the minimum precedence the rule was entered at.
     ///
-    /// An operator may be taken when its level meets the minimum precedence in force. The associativity
-    /// is retained for future precedence-climbing refinement; both forms admit an operator at or above
-    /// the current minimum.
+    /// An operator may be taken when its level meets the minimum precedence in force. Associativity is not
+    /// expressed by this comparison: it is realised entirely by the precedence the right operand enters at
+    /// (`level + 1` for left-associative, `level` for right-associative and non-associative operators), so
+    /// the single inequality `level >= minPrecedence` is correct for both forms.
     ///
     /// - Parameter minPrecedence: The minimum precedence `pr` in force at the decision.
     /// - Returns: `true` if an operator at this level may be taken under `minPrecedence`.

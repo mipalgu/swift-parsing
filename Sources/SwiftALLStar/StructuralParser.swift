@@ -19,6 +19,12 @@ final class StructuralParser<Input: ParserInput> {
     private var callStack: [ATNStateID] = []
     /// The minimum operator precedence per rule currently on the stack (for left-recursion guards).
     private var precedenceStack: [Int] = []
+    /// The enter-at precedence the next rule call should push, set just before a right-operand call.
+    ///
+    /// Carried from a right-operand rule edge's `enterPrecedence` to the callee's ``parseRuleBody``, where
+    /// it is read and cleared. `nil` for every ordinary call (start rule, recovery, JSON, non-operator
+    /// rules), so those push the base precedence `0` exactly as before.
+    private var pendingEnterPrecedence: Int?
 
     /// Creates a structural parser.
     /// - Parameters:
@@ -85,7 +91,11 @@ final class StructuralParser<Input: ParserInput> {
     /// Walks a rule's submachine, accumulating its children, or returns `nil` if it cannot be parsed.
     private func parseRuleBody(_ name: String) -> [GreenChild]? {
         guard let entry = atn.ruleEntry[name], let stop = atn.ruleStop[name] else { return nil }
-        precedenceStack.append(0)
+        // Read and clear the pending enter-at precedence so a stale value cannot leak into a sibling,
+        // later, or recovery call: every such call must enter at the base precedence 0.
+        let enterAt = pendingEnterPrecedence
+        pendingEnterPrecedence = nil
+        precedenceStack.append(enterAt ?? 0)
         defer { precedenceStack.removeLast() }
         var kids: [GreenChild] = []
         var p = entry
@@ -112,11 +122,13 @@ final class StructuralParser<Input: ParserInput> {
                 }
                 kids.append(child)
                 p = t
-            case .rule(_, let follow, let ruleName, let isHidden, let isDefined, let field, let t):
+            case .rule(_, let follow, let ruleName, let isHidden, let isDefined, let field, let t, let enterPrecedence):
                 guard isDefined else {
                     // A reference to an undefined rule fails the whole rule, surfacing a MISSING at the top.
                     return nil
                 }
+                // Carry the right-operand's enter-at precedence to the callee, where it is consumed.
+                pendingEnterPrecedence = enterPrecedence
                 callStack.append(follow)
                 let sub = parseSubrule(ruleName, field: field, isHidden: isHidden)
                 callStack.removeLast()

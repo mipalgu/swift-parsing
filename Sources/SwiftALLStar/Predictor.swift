@@ -40,7 +40,7 @@ final class Predictor<Input: ParserInput> {
         var sites: [String: [ATNStateID]] = [:]
         for state in atn.states {
             for transition in state.transitions {
-                if case .rule(_, let follow, let calledRule, _, _, _, _) = transition {
+                if case .rule(_, let follow, let calledRule, _, _, _, _, _) = transition {
                     sites[calledRule, default: []].append(follow)
                 }
             }
@@ -164,7 +164,7 @@ final class Predictor<Input: ParserInput> {
                 if config.context.hasWildcard || atn.predicates[id].holds(minPrecedence: config.minPrecedence) {
                     closure(config.at(state: t, context: config.context), into: &set, busy: &busy)
                 }
-            case .rule(let callee, let follow, _, _, _, _, _):
+            case .rule(let callee, let follow, _, _, _, _, _, _):
                 let pushed = config.context.pushing(follow)
                 closure(config.at(state: callee, context: pushed), into: &set, busy: &busy)
             }
