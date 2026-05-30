@@ -11,6 +11,13 @@ let strict: [SwiftSetting] = [
     .swiftLanguageMode(.v6)
 ]
 
+// ParsingCore is the embedded-safe heart of the framework. The EmbeddedRestrictions diagnostic flags
+// constructs that Embedded Swift cannot compile (existentials, untyped throws, Foundation, ...) during a
+// normal host build, so incompatibilities are caught here long before the dedicated embedded compile gate.
+let embeddedSafe: [SwiftSetting] = strict + [
+    .enableExperimentalFeature("EmbeddedRestrictions")
+]
+
 let package = Package(
     name: "SwiftParsing",
     platforms: [
@@ -35,14 +42,9 @@ let package = Package(
         // and pure-Swift builds (musl, WASM) never pull in the C runtime.
         .package(url: "https://github.com/tree-sitter/swift-tree-sitter", from: "0.9.0"),
         .package(url: "https://github.com/tree-sitter/tree-sitter-json", from: "0.24.0"),
-        // Documentation plugins only. These contribute build-time commands
-        // (`generate-static-documentation`, `generate-documentation`), never product code, so the
-        // embedded/musl/WASM builds and the shipped libraries are unaffected.
-        .package(url: "https://github.com/mipalgu/swift-docc-static.git", branch: "main"),
-        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.1.0"),
     ],
     targets: [
-        .target(name: "ParsingCore", swiftSettings: strict),
+        .target(name: "ParsingCore", swiftSettings: embeddedSafe),
         .target(name: "Parsing", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "ParsingDSL", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "RecursiveDescent", dependencies: ["ParsingCore"], swiftSettings: strict),
@@ -79,3 +81,39 @@ let package = Package(
         ),
     ]
 )
+
+// Documentation plugins (mipalgu/swift-docc-static and swiftlang/swift-docc-plugin) contribute only
+// build-time commands (`generate-static-documentation`, `generate-documentation`), never product code,
+// but they pull in a large dependency graph (SwiftNIO, swift-crypto, cmark, ...). They are added only
+// when the DOCUMENTATION environment variable is set (as the docs CI job does), so normal and
+// cross-platform builds neither resolve nor compile that graph.
+if Context.environment["DOCUMENTATION"] != nil {
+    package.dependencies.append(contentsOf: [
+        .package(url: "https://github.com/mipalgu/swift-docc-static.git", branch: "main"),
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.1.0"),
+    ])
+}
+
+// Performance benchmarks (ordo-one/package-benchmark) are opt-in: they depend on jemalloc and do not
+// build on WebAssembly or static musl, so the target and its dependency are added only when the
+// BENCHMARK environment variable is set (as the dedicated `swift package benchmark` CI job does). Every
+// other build, including the cross-platform matrix, never resolves or compiles them.
+if Context.environment["BENCHMARK"] != nil {
+    package.dependencies.append(
+        .package(url: "https://github.com/ordo-one/package-benchmark", from: "1.29.0")
+    )
+    package.targets.append(
+        .executableTarget(
+            name: "ParseBenchmarks",
+            dependencies: [
+                "ParsingCore", "ParsingDSL", "RecursiveDescent",
+                .product(name: "Benchmark", package: "package-benchmark"),
+            ],
+            path: "Benchmarks/ParseBenchmarks",
+            swiftSettings: strict,
+            plugins: [
+                .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+            ]
+        )
+    )
+}

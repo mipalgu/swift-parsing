@@ -6,3 +6,10 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+
+# package-benchmark machine-specific baselines (CI compares PR vs main on the same runner)
+.benchmarkBaselines/
+
+# Generated documentation output
+/docs
+/.build-documentation
