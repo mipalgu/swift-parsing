@@ -6,7 +6,7 @@ import ParsingCore
 /// recursion differently. ``chunk()`` is the full structural grammar, authored free of left recursion so
 /// it runs identically on the recursive-descent, GLR, and ALL(*) engines and anchors the byte-identical
 /// three-engine differential. ``expressions()`` is a directly left-recursive expression ladder built with
-/// the ``precedence(level:associativity:)`` combinator; it drives the ALL(*) engine's left-recursion
+/// the `precedence(level:associativity:)` combinator; it drives the ALL(*) engine's left-recursion
 /// rewriter and proves precedence-climbing on a real language. Both share the lexical core: identifiers,
 /// the four numeral forms, the three string forms with the full escape set, and the comment/whitespace
 /// trivia.

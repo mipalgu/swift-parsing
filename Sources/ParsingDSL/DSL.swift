@@ -207,7 +207,7 @@ public enum Match {
 ///
 /// - Parameter marker: The opening sequence introducing the comment (for example `"--"` for Lua or
 ///   `"//"` for C-style line comments).
-/// - Returns: A ``TokenMatcher`` matching one whole line comment, suitable for the `extras` array.
+/// - Returns: A `TokenMatcher` matching one wholeline comment, suitable for the `extras` array.
 public func lineComment(_ marker: String) -> TokenMatcher {
     let lineEnd = Match.oneOf(Match.lit("\n"), Match.lit("\r"))
     return Match.seq(
@@ -226,7 +226,7 @@ public func lineComment(_ marker: String) -> TokenMatcher {
 /// - Parameters:
 ///   - open: The opening delimiter (for example `"--[["` for a fixed-level Lua block comment).
 ///   - close: The closing delimiter (for example `"]]"`).
-/// - Returns: A ``TokenMatcher`` matching one whole block comment, suitable for the `extras` array.
+/// - Returns: A `TokenMatcher` matching one wholeblock comment, suitable for the `extras` array.
 public func blockComment(open: String, close: String) -> TokenMatcher {
     Match.seq(
         Match.lit(open),
