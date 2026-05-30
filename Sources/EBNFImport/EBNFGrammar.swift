@@ -167,6 +167,12 @@ public enum EBNFGrammar {
             return matchers.map(exportMatcher).joined()
         case .repeated(let min, let max, let inner):
             return exportRepeatedMatcher(min: min, max: max, inner)
+        case .lookahead(let negate, let inner):
+            // W3C EBNF has no zero-width-assertion surface form, so a lookahead cannot be rendered as a
+            // production. Rather than silently drop it, emit a visible EBNF comment naming the construct
+            // and the matcher it guards; the comment is skipped on re-import and the export stays total.
+            let note = negate ? Notation.negativeLookaheadNote : Notation.positiveLookaheadNote
+            return "\(Notation.commentOpen) \(note) \(exportMatcher(inner)) \(Notation.commentClose)"
         }
     }
 

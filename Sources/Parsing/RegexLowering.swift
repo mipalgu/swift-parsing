@@ -50,6 +50,10 @@ public enum RegexLowering {
             return "(?:\(matchers.map { regexString(from: $0) }.joined(separator: "|")))"
         case .repeated(let min, let max, let inner):
             return groupedRegex(inner) + quantifier(min: min, max: max)
+        case .lookahead(let negate, let inner):
+            // Zero-width assertions have a direct regular-expression form: `(?=...)` for a positive
+            // lookahead and `(?!...)` for a negative one, so the round-trip stays lossless.
+            return "(?\(negate ? "!" : "=")\(regexString(from: inner)))"
         }
     }
 
@@ -187,9 +191,22 @@ private struct RegexParser {
         switch character {
         case "(":
             position += 1
-            if peek() == "?" { position += 1; if peek() == ":" { position += 1 } }
+            // Recognise the group prefixes: a non-capturing group `(?:`, a positive lookahead `(?=` and a
+            // negative lookahead `(?!`. A bare `(` is treated as a (capturing) group, captured semantics
+            // being irrelevant to matching.
+            var lookaheadNegate: Bool? = nil
+            if peek() == "?" {
+                position += 1
+                switch peek() {
+                case ":": position += 1
+                case "=": position += 1; lookaheadNegate = false
+                case "!": position += 1; lookaheadNegate = true
+                default: break
+                }
+            }
             guard let inner = parseAlternation(), peek() == ")" else { return nil }
             position += 1
+            if let negate = lookaheadNegate { return .lookahead(negate: negate, inner) }
             return inner
         case "[":
             return parseCharacterClass()

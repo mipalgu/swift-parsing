@@ -38,4 +38,22 @@ public enum TokenMatcher: Hashable, Sendable {
     case alternation([TokenMatcher])
     /// Matches the sub-matcher repeatedly, between `min` and `max` times (`max == nil` is unbounded).
     indirect case repeated(min: Int, max: Int?, TokenMatcher)
+    /// Matches a zero-width lookahead: the inner matcher is evaluated at the current position but the
+    /// cursor never advances.
+    ///
+    /// Lookahead expresses a *follow-restriction* (a boundary condition) without consuming any input, so
+    /// it can be sequenced with other matchers to assert what does, or does not, come next. When `negate`
+    /// is `false` it is a positive lookahead that succeeds at a position if, and only if, the inner
+    /// matcher matches there; when `negate` is `true` it is a negative lookahead that succeeds at a
+    /// position if, and only if, the inner matcher does *not* match there. In both cases a successful
+    /// lookahead consumes nothing and the overall match continues at the unchanged position, while a
+    /// failed lookahead fails the match. This is the primitive needed to distinguish a keyword from an
+    /// identifier prefix (for example, `if` is a keyword only when it is not followed by a further
+    /// identifier character, so `iffy` remains an identifier).
+    ///
+    /// - Parameters:
+    ///   - negate: `false` for a positive lookahead (succeeds when the inner matcher matches);
+    ///     `true` for a negative lookahead (succeeds when the inner matcher does not match).
+    ///   - matcher: The inner matcher evaluated, without consuming input, at the current position.
+    indirect case lookahead(negate: Bool, TokenMatcher)
 }
