@@ -103,10 +103,17 @@ jobs:
       - name: Test on WebAssembly
         # Run the library test suites under the WasmKit runtime bundled with the toolchain. The
         # executable's test target is excluded because an executable cannot be @testable-imported when
-        # cross-compiling.
+        # cross-compiling. WasmKit raises a trap while tearing the module down after a successful run,
+        # so success is judged from the test report rather than the process exit code.
         env:
           EXCLUDE_EXECUTABLE_TESTS: "1"
-        run: EXCLUDE_EXECUTABLE_TESTS=1 swift test --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm"
+        run: |
+          EXCLUDE_EXECUTABLE_TESTS=1 swift test --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" \
+            2>&1 | tee wasm-test.log || true
+          grep -qE 'Test run with [0-9]+ tests.*passed' wasm-test.log
+          if grep -qiE '[1-9][0-9]* (test|tests) failed|recorded an issue|✘' wasm-test.log; then
+            echo "WebAssembly tests reported failures"; exit 1
+          fi
 
   musl:
     name: Static Linux musl (build)
