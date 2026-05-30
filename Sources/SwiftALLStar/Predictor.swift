@@ -15,8 +15,16 @@ final class Predictor<Input: ParserInput> {
     let atn: ATN
     let input: Input
     let extras: [TokenMatcher]
+    /// The follow (return) states of every call site, grouped by the called rule's name.
+    ///
+    /// Precomputed once so the stack-insensitive SLL return at a submachine stop can enumerate a rule's
+    /// callers in O(call sites) rather than rescanning the whole ATN on every wildcard return.
+    private let callSites: [String: [ATNStateID]]
     /// One lookahead DFA per decision, grown lazily and reused within this parse run.
     private var dfaCache: [DecisionID: DFA] = [:]
+    /// Memoises whether each decision is guarded by a semantic predicate; it depends only on the ATN, so
+    /// it is computed at most once per decision rather than on every prediction.
+    private var predicateDecisionCache: [DecisionID: Bool] = [:]
     /// Counts DFA-edge cache hits, exposed for white-box tests of cache reuse.
     private(set) var cacheHits: Int = 0
 
@@ -29,6 +37,15 @@ final class Predictor<Input: ParserInput> {
         self.atn = atn
         self.input = input
         self.extras = extras
+        var sites: [String: [ATNStateID]] = [:]
+        for state in atn.states {
+            for transition in state.transitions {
+                if case .rule(_, let follow, let calledRule, _, _, _, _) = transition {
+                    sites[calledRule, default: []].append(follow)
+                }
+            }
+        }
+        self.callSites = sites
     }
 
     // MARK: - adaptivePredict (Function 2)
@@ -44,20 +61,32 @@ final class Predictor<Input: ParserInput> {
     func adaptivePredict(
         decision: DecisionID, callStack: [ATNStateID], start: Input.Index, minPrecedence: Int
     ) -> Int {
-        let stackContext = llStack(callStack)
         if decisionHasPredicate(decision) {
-            return llPredict(decision: decision, start: start, stack: stackContext, minPrecedence: minPrecedence)
+            return llPredict(
+                decision: decision, start: start, stack: llStack(callStack), minPrecedence: minPrecedence)
         }
         let dfa = dfaCache[decision] ?? makeDFA(decision: decision, minPrecedence: minPrecedence)
+        // The full-LL call stack is needed only if SLL fails over, which is rare; building it eagerly is
+        // O(stack depth) per decision and dominates deeply nested input, so it is deferred to the fallback.
         return sllPredict(
             decision: decision, dfa: dfa, start: start,
-            llStack: stackContext, minPrecedence: minPrecedence)
+            callStack: callStack, minPrecedence: minPrecedence)
     }
 
     /// Whether any alternative at a decision is guarded by a semantic predicate.
+    ///
+    /// The answer depends only on the static ATN, so it is memoised per decision: the recursive reachability
+    /// walk runs at most once for each decision rather than on every prediction.
     private func decisionHasPredicate(_ decision: DecisionID) -> Bool {
-        guard let stateID = atn.decisions[decision] else { return false }
-        return reachableHasPredicate(from: stateID, visited: [])
+        if let cached = predicateDecisionCache[decision] { return cached }
+        let result: Bool
+        if let stateID = atn.decisions[decision] {
+            result = reachableHasPredicate(from: stateID, visited: [])
+        } else {
+            result = false
+        }
+        predicateDecisionCache[decision] = result
+        return result
     }
 
     /// Whether a predicate edge is reachable from a decision before consuming a token.
@@ -151,17 +180,14 @@ final class Predictor<Input: ParserInput> {
     private func closureAtStop(_ config: ATNConfig, into set: inout ConfigSet, busy: inout Set<ClosureKey>) {
         let context = config.context
         if context.hasWildcard {
-            // SLL wildcard: return to every call site of this rule.
+            // SLL wildcard: return to every call site of this rule (enumerated from the precomputed map,
+            // in ATN order, so the resulting configuration set is identical to a full ATN rescan).
             let ruleName = atn[config.state].rule
-            var returned = false
-            for state in atn.states {
-                for transition in state.transitions {
-                    if case .rule(_, let follow, let calledRule, _, _, _, _) = transition, calledRule == ruleName {
-                        returned = true
-                        closure(config.at(state: follow, context: .wildcard), into: &set, busy: &busy)
-                    }
-                }
+            let follows = callSites[ruleName] ?? []
+            for follow in follows {
+                closure(config.at(state: follow, context: .wildcard), into: &set, busy: &busy)
             }
+            let returned = !follows.isEmpty
             // A top-level rule has no callers: the alternative has completed, so record it as an accept.
             if !returned { set.insert(config) }
             return
@@ -193,14 +219,15 @@ final class Predictor<Input: ParserInput> {
     /// Runs SLL prediction over the lookahead DFA, failing over to full LL on stack sensitivity.
     private func sllPredict(
         decision: DecisionID, dfa: DFA, start: Input.Index,
-        llStack: PredictionContext, minPrecedence: Int
+        callStack: [ATNStateID], minPrecedence: Int
     ) -> Int {
         var cursor = start
         var state = dfa.start!
         while true {
             if state.isError { return Self.noViableAlternative }
             if state.isStackSensitive {
-                return llPredict(decision: decision, start: start, stack: llStack, minPrecedence: minPrecedence)
+                return llPredict(
+                    decision: decision, start: start, stack: llStack(callStack), minPrecedence: minPrecedence)
             }
             if let prediction = state.prediction { return prediction }
 
@@ -270,29 +297,54 @@ final class Predictor<Input: ParserInput> {
     /// JSON decisions agree on the consumed span (they are LL(1) on the first token); the longest match
     /// is taken as the canonical step so the lookahead is deterministic.
     private func nextTokenKey(configs: ConfigSet, at tokenStart: Input.Index) -> (TokenKey, Input.Index)? {
+        // The DFA edge is identified by the set of atom edges that match at the longest span: that set,
+        // and not the literal text, is exactly what `move` follows, so identifying the edge this way reuses
+        // one cached edge for every token that drives the same atoms (every JSON number, every string, ...).
+        // A single matching pass records both the longest span and the targets that reach it; when a longer
+        // match appears the partial set is discarded, since only the longest-span edges survive into `move`.
         var bestEnd: Input.Index?
+        var firstTarget: ATNStateID = -1
+        var targetCount = 0
+        var overflow: [ATNStateID] = []
         for config in configs.configs {
             for transition in atn[config.state].transitions {
-                if case .atom(let matcher, _, _, _, _) = transition,
+                if case .atom(let matcher, _, _, _, let target) = transition,
                     let end = matchToken(matcher, in: input, at: tokenStart)
                 {
-                    if bestEnd == nil || end > bestEnd! { bestEnd = end }
+                    if bestEnd == nil || end > bestEnd! {
+                        bestEnd = end
+                        firstTarget = target
+                        targetCount = 1
+                        overflow.removeAll(keepingCapacity: true)
+                    } else if end == bestEnd! {
+                        if targetCount == 1 { overflow.append(firstTarget) }
+                        overflow.append(target)
+                        targetCount += 1
+                    }
                 }
             }
         }
         guard let end = bestEnd else { return nil }
-        let key = Input.text(of: input[tokenStart..<end])
-        return (key, end)
+        if targetCount == 1 {
+            return (TokenKey(matchedTargets: [firstTarget]), end)
+        }
+        overflow.sort()
+        var deduped: [ATNStateID] = []
+        deduped.reserveCapacity(overflow.count)
+        for target in overflow where deduped.last != target { deduped.append(target) }
+        return (TokenKey(matchedTargets: deduped), end)
     }
 
     /// Moves a configuration set across the token identified by `key`, then takes the closure.
+    ///
+    /// The configurations whose waiting atom edge is one of the key's matched targets advance across it;
+    /// they are exactly the edges that matched at the longest span when the key was computed.
     private func move(_ configs: ConfigSet, key: TokenKey, at tokenStart: Input.Index) -> ConfigSet {
         var next = ConfigSet()
         for config in configs.configs {
             for transition in atn[config.state].transitions {
-                if case .atom(let matcher, _, _, _, let target) = transition,
-                    let end = matchToken(matcher, in: input, at: tokenStart),
-                    Input.text(of: input[tokenStart..<end]) == key
+                if case .atom(_, _, _, _, let target) = transition,
+                    key.matchedTargets.contains(target)
                 {
                     var busy: Set<ClosureKey> = []
                     closure(config.at(state: target, context: config.context), into: &next, busy: &busy)

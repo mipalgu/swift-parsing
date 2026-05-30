@@ -77,6 +77,26 @@ struct PredictionTests {
         #expect(predictor.cacheHits > hitsAfterFirst)
     }
 
+    @Test("Distinct value tokens reuse one cached DFA edge")
+    func valueTokensShareDFAEdge() throws {
+        // A lookahead DFA edge is keyed by which atom edges matched, not by the literal token text, so
+        // two different numbers drive the very same edge: the second prediction is served entirely from
+        // the warm cache without growing the DFA. This is what keeps the cache warm on value-rich input.
+        let (atn, predictor, input) = try jsonPredictor("12345 -67.8e9")
+        let decision = valueDecision(atn)
+        let firstStart = input.startIndex
+        let secondStart = input.index(input.startIndex, offsetBy: 6)  // past "12345 "
+        let p1 = predictor.adaptivePredict(
+            decision: decision, callStack: [], start: firstStart, minPrecedence: 0)
+        let hitsAfterFirst = predictor.cacheHits
+        let p2 = predictor.adaptivePredict(
+            decision: decision, callStack: [], start: secondStart, minPrecedence: 0)
+        #expect(p1 == 4)
+        #expect(p2 == 4)
+        // The second, textually different number was served from the warm cache: hits advanced.
+        #expect(predictor.cacheHits > hitsAfterFirst)
+    }
+
     @Test("closure terminates on a right-recursive rule")
     func closureTerminatesOnRightRecursion() throws {
         // r -> 'a' r | 'a' : right recursion must not loop the closure.

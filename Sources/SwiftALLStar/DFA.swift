@@ -1,10 +1,16 @@
-/// The identity of a lookahead-DFA edge: the text a logical token consumed.
+/// The identity of a lookahead-DFA edge: the set of atom edges that matched the next logical token at its
+/// longest span, in ascending target order.
 ///
-/// Because the framework is scannerless there is no fixed token lexicon; a DFA edge is therefore keyed
-/// by the exact text the surviving atom edges consumed at a step. Equal source text reuses the same edge
-/// (a cache hit) while distinct tokens take distinct edges, and the key is identical across input
-/// granularities because it is the decoded text, not a raw element.
-typealias TokenKey = String
+/// Because the framework is scannerless there is no fixed token lexicon. What determines the successor
+/// configuration set, however, is not the literal token text but *which* waiting atom edges fired at the
+/// step (the move follows exactly those). Keying the edge by that set rather than by the consumed text
+/// lets value-bearing tokens that drive the same edges (for example every distinct JSON number or string)
+/// share one cached DFA edge, which keeps the lookahead cache warm across value-rich input. The key is
+/// identical across input granularities because it is composed of ATN target identities, not raw elements.
+struct TokenKey: Hashable {
+    /// The targets of the atom edges that matched at the longest span, sorted ascending and deduplicated.
+    let matchedTargets: [ATNStateID]
+}
 
 /// A state in a decision's lookahead DFA.
 ///
