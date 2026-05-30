@@ -261,6 +261,21 @@ public enum CGrammar {
                 Match.notFollowedBy(.alternation(continuations.map { Match.lit($0) }))))
     }
 
+    /// Builds a word-boundary-guarded keyword token: the literal `text`, but only when it stands at a word
+    /// boundary (it is not immediately followed by a further identifier character).
+    ///
+    /// A C keyword used in a structural position (such as the type keyword `int` or the statement keyword
+    /// `return`) is a bare literal, which without a boundary would match the `int` prefix of the identifier
+    /// `intx`, splitting one identifier into a keyword and a shorter name. The trailing
+    /// ``keywordBoundary`` assertion restores the maximal-munch identifier rule, mirroring the negative
+    /// lookahead the identifier matcher already uses to exclude whole keywords. The keyword is matched as an
+    /// anonymous token so it contributes the same (absent) node as a bare literal would.
+    /// - Parameter text: The keyword's exact text.
+    /// - Returns: A boundary-guarded anonymous-token rule expression for the keyword.
+    private static func keyword(_ text: String) -> RuleExpr {
+        token(Match.seq(Match.lit(text), keywordBoundary))
+    }
+
     // MARK: - Structural grammar (left-recursion-free; all three engines)
 
     /// Builds the full structural C grammar as a `Grammar` intermediate representation.
@@ -304,7 +319,8 @@ public enum CGrammar {
             }
             rule("parameter_list") {
                 choice {
-                    "void"
+                    // A lone `void` parameter list (an explicitly empty list), guarded to a word boundary.
+                    keyword("void")
                     seq {
                         ref("parameter_declaration")
                         repeat0 {
@@ -326,14 +342,18 @@ public enum CGrammar {
             // A type specifier: optional `const`, one or more built-in type keywords, optional `const`.
             rule("type_specifier") {
                 seq {
-                    optional { "const" }
+                    optional { keyword("const") }
                     repeat1 { ref("type_keyword") }
-                    optional { "const" }
+                    optional { keyword("const") }
                 }
             }
             rule("type_keyword") {
                 choice {
-                    "void"; "char"; "short"; "int"; "long"; "float"; "double"; "signed"; "unsigned"; "_Bool"
+                    // Each type keyword stands at a word boundary so it does not match the prefix of a
+                    // longer identifier (for example the `int` of `intx`).
+                    keyword("void"); keyword("char"); keyword("short"); keyword("int"); keyword("long")
+                    keyword("float"); keyword("double"); keyword("signed"); keyword("unsigned")
+                    keyword("_Bool")
                 }
             }
 
@@ -341,7 +361,7 @@ public enum CGrammar {
             rule("pointer") {
                 seq {
                     "*"
-                    optional { "const" }
+                    optional { keyword("const") }
                 }
             }
 
@@ -442,7 +462,7 @@ public enum CGrammar {
 
             rule("if_statement") {
                 seq {
-                    "if"
+                    keyword("if")
                     "("
                     field("condition") { ref("expression") }
                     ")"
@@ -452,14 +472,14 @@ public enum CGrammar {
             }
             rule("else_clause") {
                 seq {
-                    "else"
+                    keyword("else")
                     field("alternative") { ref("statement") }
                 }
             }
 
             rule("while_statement") {
                 seq {
-                    "while"
+                    keyword("while")
                     "("
                     field("condition") { ref("expression") }
                     ")"
@@ -469,9 +489,9 @@ public enum CGrammar {
 
             rule("do_while_statement") {
                 seq {
-                    "do"
+                    keyword("do")
                     field("body") { ref("statement") }
-                    "while"
+                    keyword("while")
                     "("
                     field("condition") { ref("expression") }
                     ")"
@@ -482,7 +502,7 @@ public enum CGrammar {
             // A for statement: the three clauses may each be empty; the initialiser may be a declaration.
             rule("for_statement") {
                 seq {
-                    "for"
+                    keyword("for")
                     "("
                     optional { field("initialiser") { ref("for_initialiser") } }
                     ";"
@@ -517,26 +537,26 @@ public enum CGrammar {
 
             rule("return_statement") {
                 seq {
-                    "return"
+                    keyword("return")
                     optional { field("value") { ref("expression") } }
                     ";"
                 }
             }
             rule("break_statement") {
                 seq {
-                    "break"
+                    keyword("break")
                     ";"
                 }
             }
             rule("continue_statement") {
                 seq {
-                    "continue"
+                    keyword("continue")
                     ";"
                 }
             }
             rule("goto_statement") {
                 seq {
-                    "goto"
+                    keyword("goto")
                     field("label") { ref("identifier") }
                     ";"
                 }
@@ -790,7 +810,7 @@ public enum CGrammar {
             // `sizeof` applies to a parenthesised type name or to a unary expression.
             rule("sizeof_expression") {
                 seq {
-                    "sizeof"
+                    keyword("sizeof")
                     choice {
                         seq {
                             "("
@@ -1090,7 +1110,7 @@ public enum CGrammar {
                     }
                     // `sizeof` of a parenthesised type name or of a unary-level operand.
                     seq {
-                        "sizeof"
+                        keyword("sizeof")
                         choice {
                             seq {
                                 "("
@@ -1127,20 +1147,24 @@ public enum CGrammar {
             }
             rule("type_specifier") {
                 seq {
-                    optional { "const" }
+                    optional { keyword("const") }
                     repeat1 { ref("type_keyword") }
-                    optional { "const" }
+                    optional { keyword("const") }
                 }
             }
             rule("type_keyword") {
                 choice {
-                    "void"; "char"; "short"; "int"; "long"; "float"; "double"; "signed"; "unsigned"; "_Bool"
+                    // Each type keyword stands at a word boundary so it does not match the prefix of a
+                    // longer identifier (for example the `int` of `intx`).
+                    keyword("void"); keyword("char"); keyword("short"); keyword("int"); keyword("long")
+                    keyword("float"); keyword("double"); keyword("signed"); keyword("unsigned")
+                    keyword("_Bool")
                 }
             }
             rule("pointer") {
                 seq {
                     "*"
-                    optional { "const" }
+                    optional { keyword("const") }
                 }
             }
 
