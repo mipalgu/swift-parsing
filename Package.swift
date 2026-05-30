@@ -37,6 +37,8 @@ let package = Package(
         .library(name: "Query", targets: ["Query"]),
         .library(name: "G4Import", targets: ["G4Import"]),
         .library(name: "EBNFImport", targets: ["EBNFImport"]),
+        .library(name: "SwiftGLR", targets: ["SwiftGLR"]),
+        .library(name: "SwiftALLStar", targets: ["SwiftALLStar"]),
         .executable(name: "swift-parsing", targets: ["swift-parsing"]),
     ],
     dependencies: [
@@ -51,10 +53,13 @@ let package = Package(
         .target(name: "Query", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "G4Import", dependencies: ["ParsingCore", "Parsing"], swiftSettings: strict),
         .target(name: "EBNFImport", dependencies: ["ParsingCore"], swiftSettings: strict),
+        .target(name: "SwiftGLR", dependencies: ["ParsingCore"], swiftSettings: strict),
+        .target(name: "SwiftALLStar", dependencies: ["ParsingCore"], swiftSettings: strict),
         .executableTarget(
             name: "swift-parsing",
             dependencies: [
                 "ParsingCore", "ParsingDSL", "RecursiveDescent", "GrammarImport",
+                "SwiftGLR", "SwiftALLStar",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: strict
@@ -68,6 +73,8 @@ let package = Package(
         .testTarget(name: "QueryTests", dependencies: ["Query", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
         .testTarget(name: "G4ImportTests", dependencies: ["G4Import", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
         .testTarget(name: "EBNFImportTests", dependencies: ["EBNFImport", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
+        .testTarget(name: "SwiftGLRTests", dependencies: ["SwiftGLR", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
+        .testTarget(name: "SwiftALLStarTests", dependencies: ["SwiftALLStar", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
     ]
 )
 
