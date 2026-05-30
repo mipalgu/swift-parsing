@@ -990,22 +990,25 @@ public enum LuaGrammar {
                             ref("exp"); field("operator") { "or" }; ref("exp")
                         }
                     }
-                    // Unary operators bind below power but above the binary tiers; the rewriter leaves a
-                    // non-left-recursive alternative (no leading `exp`) untouched as part of the primary.
-                    ref("unary_exp")
+                    // Unary operators (level 11) bind below power but above the binary tiers. The alternative
+                    // is authored inline so its operand is a self-reference to `exp`; wrapping that operand to
+                    // re-enter at precedence 12 makes it absorb only a tighter-binding `^` and refuse every
+                    // binary operator, giving the correct `(not a) == b`, `(- a) + b`, and `-(2 ^ 2)`
+                    // groupings. It does not lead with `exp`, so the rewriter keeps it as a primary.
+                    seq {
+                        ref("unary_operator")
+                        precedence(level: 12, associativity: .none) { ref("exp") }
+                    }
                     // Primary (non-recursive) atoms.
                     ref("primary_exp")
                 }
             }
 
-            rule("unary_exp") {
-                seq {
-                    field("operator") {
-                        choice {
-                            "not"; "#"; "-"; "~"
-                        }
+            rule("unary_operator") {
+                field("operator") {
+                    choice {
+                        "not"; "#"; "-"; "~"
                     }
-                    ref("exp")
                 }
             }
 
