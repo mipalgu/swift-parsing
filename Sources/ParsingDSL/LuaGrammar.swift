@@ -132,24 +132,36 @@ public enum LuaGrammar {
         return Match.oneOf(hexFloatExp, hexFloat, hexInteger, decimalFloat, decimalInteger)
     }
 
+    /// A matcher for one whitespace element a `\z` escape may skip: space, tab, newline, carriage return,
+    /// form feed, or vertical tab.
+    private static var skippableWhitespace: TokenMatcher {
+        Match.oneOf(
+            Match.lit(" "), Match.lit("\t"), Match.lit("\n"), Match.lit("\r"),
+            Match.lit("\u{0C}"), Match.lit("\u{0B}"))
+    }
+
     /// A matcher for one escape sequence inside a short (quoted) string.
     ///
     /// Covers the full Lua escape set: the single-character escapes `\a \b \f \n \r \t \v \\ \" \'`, the
-    /// whitespace-skip `\z`, a decimal escape `\ddd` (one to three digits), a hex escape `\xHH`, a Unicode
-    /// escape `\u{...}`, and an escaped newline (line continuation).
+    /// whitespace-skip `\z` (which consumes `z` then the run of whitespace, including newlines, that
+    /// follows), a decimal escape `\ddd` (one to three digits), a hex escape `\xHH`, a Unicode escape
+    /// `\u{...}`, and an escaped newline (line continuation).
     private static var escapeSequence: TokenMatcher {
         let backslash = Match.lit("\\")
         let simple = Match.oneOf(
             Match.lit("a"), Match.lit("b"), Match.lit("f"), Match.lit("n"), Match.lit("r"),
-            Match.lit("t"), Match.lit("v"), Match.lit("z"), Match.lit("\\"), Match.lit("\""),
+            Match.lit("t"), Match.lit("v"), Match.lit("\\"), Match.lit("\""),
             Match.lit("'"), Match.lit("\n"), Match.lit("\r")
         )
+        // The `\z` whitespace-skip escape consumes `z` then zero or more following whitespace elements.
+        let whitespaceSkip = Match.seq(Match.lit("z"), Match.zeroOrMore(skippableWhitespace))
         let hexEscape = Match.seq(Match.lit("x"), Match.hexDigit, Match.hexDigit)
         let unicodeEscape = Match.seq(
             Match.lit("u"), Match.lit("{"), Match.oneOrMore(Match.hexDigit), Match.lit("}"))
         // A decimal escape is one to three decimal digits.
         let decimalEscape = Match.seq(Match.digit, Match.optional(Match.digit), Match.optional(Match.digit))
-        return Match.seq(backslash, Match.oneOf(hexEscape, unicodeEscape, simple, decimalEscape))
+        return Match.seq(
+            backslash, Match.oneOf(hexEscape, unicodeEscape, whitespaceSkip, simple, decimalEscape))
     }
 
     /// A matcher for the body of a short string delimited by `quote`.
