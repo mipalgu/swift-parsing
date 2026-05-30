@@ -68,7 +68,7 @@ jobs:
           branch: swift-6.2-release
           tag: 6.2-RELEASE
       - name: Build
-        run: swift build -c release --product swift-parsing
+        run: swift build -c release --product swift-parsing --force-resolved-versions
       - name: Package
         shell: pwsh
         run: |

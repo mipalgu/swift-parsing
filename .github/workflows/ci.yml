@@ -79,10 +79,12 @@ jobs:
         with:
           branch: swift-6.2-release
           tag: 6.2-RELEASE
+      # --force-resolved-versions pins to the committed Package.resolved revisions; some Windows
+      # git builds cannot peel a dependency's version tag to its commit ("Needed a single revision").
       - name: Build
-        run: swift build
+        run: swift build --force-resolved-versions
       - name: Test
-        run: swift test
+        run: swift test --force-resolved-versions
 
   wasm:
     name: WebAssembly (test under WasmKit)
@@ -95,15 +97,24 @@ jobs:
           swift sdk install \
             "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/wasm-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_wasm.artifactbundle.tar.gz" \
             --checksum a61f0584c93283589f8b2f42db05c1f9a182b506c2957271402992655591dd7c
+      - name: Build for WebAssembly
+        # The whole package, including the CLI executable, cross-compiles to wasm32-wasi.
+        run: swift build --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm"
       - name: Test on WebAssembly
-        # The package is pure Swift, so the whole test suite cross-compiles to wasm32-wasi and runs
-        # under the WasmKit runtime bundled with the toolchain.
-        run: swift test --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm"
+        # Run the library test suites under the WasmKit runtime bundled with the toolchain. The
+        # executable's test target is excluded because an executable cannot be @testable-imported when
+        # cross-compiling.
+        env:
+          EXCLUDE_EXECUTABLE_TESTS: "1"
+        run: EXCLUDE_EXECUTABLE_TESTS=1 swift test --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm"
 
   musl:
-    name: Static Linux musl (test)
+    name: Static Linux musl (build)
     runs-on: ubuntu-24.04
     container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    strategy:
+      matrix:
+        triple: [x86_64-swift-linux-musl, aarch64-swift-linux-musl]
     steps:
       - uses: actions/checkout@v4
       - name: Install Static Linux SDK
@@ -111,8 +122,10 @@ jobs:
           swift sdk install \
             "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/static-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz" \
             --checksum 3fd798bef6f4408f1ea5a6f94ce4d4052830c4326ab85ebc04f983f01b3da407
-      - name: Test as a static musl binary
-        run: swift test --swift-sdk x86_64-swift-linux-musl
+      - name: Build as a fully static musl binary
+        # A compile gate: the Static Linux SDK does not ship swift-testing, so the suite cannot be run
+        # there. Test execution is covered by the Linux, macOS, Windows and WebAssembly jobs.
+        run: swift build --swift-sdk ${{ matrix.triple }}
 
   embedded:
     name: Embedded compile gate

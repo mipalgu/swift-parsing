@@ -59,9 +59,18 @@ let package = Package(
         .testTarget(name: "ParsingDSLTests", dependencies: ["ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "RecursiveDescentTests", dependencies: ["RecursiveDescent", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "GrammarImportTests", dependencies: ["GrammarImport", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
-        .testTarget(name: "swift-parsingTests", dependencies: ["swift-parsing"], swiftSettings: strict),
     ]
 )
+
+// The swift-parsing executable cannot be `@testable import`ed when cross-compiling (the executable
+// module is not emitted for a non-host triple), so its test target is omitted when
+// EXCLUDE_EXECUTABLE_TESTS is set. The WebAssembly test job sets it to run the library suite under
+// WasmKit; every host build still tests the CLI.
+if Context.environment["EXCLUDE_EXECUTABLE_TESTS"] == nil {
+    package.targets.append(
+        .testTarget(name: "swift-parsingTests", dependencies: ["swift-parsing"], swiftSettings: strict)
+    )
+}
 
 // Documentation plugins (mipalgu/swift-docc-static and swiftlang/swift-docc-plugin) contribute only
 // build-time commands (`generate-static-documentation`, `generate-documentation`), never product code,
