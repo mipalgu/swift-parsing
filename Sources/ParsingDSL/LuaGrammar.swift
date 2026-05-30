@@ -15,6 +15,28 @@ import ParsingCore
 /// conventions where practical, so a parsed tree reads naturally and queries are portable. Deeply nested
 /// long-bracket comments and strings beyond the fixed `[[ ]]`, `[=[ ]=]`, and `[==[ ]==]` levels are out
 /// of scope for this milestone and are not modelled.
+///
+/// ## Known limitation: a statement-leading `(` on the next line
+///
+/// Lua is not newline-sensitive, so a call followed on the next line by a parenthesised expression is one
+/// statement, not two. In
+///
+/// ```lua
+/// f()
+/// ("x"):upper()
+/// ```
+///
+/// the reference interpreter reads the whole thing as the single call `f()("x"):upper()`, because the
+/// opening parenthesis continues the preceding prefix expression rather than starting a fresh statement.
+/// This is the notorious Lua prefix-expression ambiguity. The framework's engines diverge on this shape:
+/// the structural grammar permits both readings and the three engines do not agree on which to take, so it
+/// breaks the byte-identical differential. Resolving it would require either the reference interpreter's
+/// semicolon-insertion heuristic or engine-level disambiguation, both out of scope for this milestone.
+///
+/// The supported corpus therefore excludes any statement that begins with `(` on the line immediately
+/// following a call. Such inputs are deliberately kept out of the differential corpus; write the
+/// continuation on one line (`f()("x"):upper()`) or insert an explicit `;` separator if two statements are
+/// intended.
 public enum LuaGrammar {
     // MARK: - Lexical core
 
