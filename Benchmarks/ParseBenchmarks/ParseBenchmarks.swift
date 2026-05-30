@@ -27,6 +27,41 @@ private func makeJSON(objectCount: Int) -> String {
     return "[" + elements.joined(separator: ",") + "]"
 }
 
+/// Builds a representative Lua source module with the given number of functions.
+///
+/// Each function exercises a spread of the grammar (local declarations, a numeric `for` loop, a table
+/// constructor, an `if`/`else`, arithmetic and comparison expressions, a method call, and a line comment),
+/// so the benchmark reflects realistic mixed Lua rather than a single construct.
+/// - Parameter functionCount: The number of functions in the generated module.
+/// - Returns: Valid Lua source as text.
+private func makeLua(functionCount: Int) -> String {
+    var parts: [String] = []
+    parts.reserveCapacity(functionCount + 2)
+    parts.append("-- Generated Lua module for benchmarking")
+    parts.append("local M = {}")
+    for index in 0..<functionCount {
+        parts.append(
+            """
+            function M.process_\(index)(items, factor)
+                -- accumulate a weighted sum over the items
+                local total = 0
+                for i = 1, #items do
+                    local value = items[i] * factor + \(index)
+                    if value > 0 and value <= 100 then
+                        total = total + value
+                    else
+                        total = total - value
+                    end
+                end
+                local config = { id = \(index), name = "process_\(index)", ratio = \(Double(index) * 1.5) }
+                return M:finalise(total, config)
+            end
+            """)
+    }
+    parts.append("return M")
+    return parts.joined(separator: "\n")
+}
+
 let benchmarks: @Sendable () -> Void = {
     Benchmark.defaultConfiguration.metrics = [
         .wallClock,
@@ -60,6 +95,26 @@ let benchmarks: @Sendable () -> Void = {
         benchmark.startMeasurement()
         for _ in benchmark.scaledIterations {
             blackHole(engine.parse(largeSource))
+        }
+    }
+
+    let luaGrammar = LuaGrammar.chunk()
+    let smallLuaSource = Source(makeLua(functionCount: 8))
+    let largeLuaSource = Source(makeLua(functionCount: 256))
+
+    Benchmark("Parse small Lua (UTF-8, 8 functions)") { benchmark in
+        let engine = try UTF8Parser(grammar: luaGrammar)
+        benchmark.startMeasurement()
+        for _ in benchmark.scaledIterations {
+            blackHole(engine.parse(smallLuaSource))
+        }
+    }
+
+    Benchmark("Parse large Lua (UTF-8, 256 functions)") { benchmark in
+        let engine = try UTF8Parser(grammar: luaGrammar)
+        benchmark.startMeasurement()
+        for _ in benchmark.scaledIterations {
+            blackHole(engine.parse(largeLuaSource))
         }
     }
 }
