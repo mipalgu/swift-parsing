@@ -75,6 +75,10 @@ let package = Package(
         .testTarget(name: "EBNFImportTests", dependencies: ["EBNFImport", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
         .testTarget(name: "SwiftGLRTests", dependencies: ["SwiftGLR", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
         .testTarget(name: "SwiftALLStarTests", dependencies: ["SwiftALLStar", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
+        .testTarget(
+            name: "LookaheadTests",
+            dependencies: ["ParsingCore", "ParsingDSL", "RecursiveDescent", "SwiftGLR", "SwiftALLStar"],
+            swiftSettings: strict),
     ]
 )
 
