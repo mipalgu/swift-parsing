@@ -6,25 +6,8 @@ import Testing
 
 @testable import G4Import
 
-/// A small inline JSON `.g4` grammar mirroring the bundled `JSON.g4`, used where a literal grammar
-/// keeps a test self-contained. Rule and node names are aligned to `ParsingDSL.JSONGrammar`.
-private let inlineJSONGrammar = """
-    grammar JSON;
-    document : _value EOF ;
-    _value : object | array | string | number | true | false | null ;
-    object : '{' ( pair ( ',' pair )* )? '}' ;
-    pair : key=( string | number ) ':' value=_value ;
-    array : '[' ( _value ( ',' _value )* )? ']' ;
-    string : '"' string_content? '"' ;
-    string_content : STRING_CONTENT ;
-    number : NUMBER ;
-    true : 'true' ;
-    false : 'false' ;
-    null : 'null' ;
-    STRING_CONTENT : ~'"'+ ;
-    NUMBER : '-'? ( '0' | [1-9] [0-9]* ) ( '.' [0-9]+ )? ( [eE] [+-]? [0-9]+ )? ;
-    WS : [ \\t\\n\\r]+ -> skip ;
-    """
+/// The JSON `.g4` grammar shipped by the module, used as the literal grammar across these tests.
+private let inlineJSONGrammar = G4Grammar.jsonGrammar
 
 @Suite("G4 acceptance: imported JSON.g4 agrees with the DSL grammar")
 struct AcceptanceTests {
@@ -50,10 +33,9 @@ struct AcceptanceTests {
         #"{"k": [true, {"n": null}], "m": "v"}"#,
     ]
 
-    @Test("The bundled JSON.g4 resource parses every corpus document like the DSL grammar")
-    func bundledResourceAgrees() throws {
-        let url = try #require(Bundle.module.url(forResource: "JSON", withExtension: "g4"))
-        let imported = try G4Grammar.grammar(from: Data(contentsOf: url))
+    @Test("The shipped JSON.g4 grammar parses every corpus document like the DSL grammar")
+    func shippedGrammarAgrees() throws {
+        let imported = try G4Grammar.grammar(from: Data(G4Grammar.jsonGrammar.utf8))
         let dsl = JSONGrammar.grammar()
         for input in Self.corpus {
             let importedTree = try UTF8Parser(grammar: imported).parse(Source(input)).sExpression()

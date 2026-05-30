@@ -49,4 +49,27 @@ public enum G4Grammar {
     public static func grammar(from data: Data) throws(G4ImportError) -> Grammar {
         try grammar(fromString: String(decoding: data, as: UTF8.self))
     }
+
+    /// A JSON grammar expressed in ANTLR `.g4` syntax, shipped as a portable string so it is available
+    /// on every platform (including WebAssembly) without relying on bundle resources.
+    ///
+    /// Its rule and node names match `ParsingDSL.JSONGrammar`, so importing it and parsing with the
+    /// native engine yields the same concrete syntax tree.
+    public static let jsonGrammar: String = """
+        grammar JSON;
+        document : _value EOF ;
+        _value : object | array | string | number | true | false | null ;
+        object : '{' ( pair ( ',' pair )* )? '}' ;
+        pair : key=( string | number ) ':' value=_value ;
+        array : '[' ( _value ( ',' _value )* )? ']' ;
+        string : '"' string_content? '"' ;
+        string_content : STRING_CONTENT ;
+        number : NUMBER ;
+        true : 'true' ;
+        false : 'false' ;
+        null : 'null' ;
+        STRING_CONTENT : ~'"'+ ;
+        NUMBER : '-'? ( '0' | [1-9] [0-9]* ) ( '.' [0-9]+ )? ( [eE] [+-]? [0-9]+ )? ;
+        WS : [ \\t\\n\\r]+ -> skip ;
+        """
 }

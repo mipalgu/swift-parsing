@@ -49,12 +49,7 @@ let package = Package(
         .target(name: "RecursiveDescent", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "GrammarImport", dependencies: ["ParsingCore", "Parsing"], swiftSettings: strict),
         .target(name: "Query", dependencies: ["ParsingCore"], swiftSettings: strict),
-        .target(
-            name: "G4Import",
-            dependencies: ["ParsingCore", "Parsing"],
-            resources: [.process("Resources")],
-            swiftSettings: strict
-        ),
+        .target(name: "G4Import", dependencies: ["ParsingCore", "Parsing"], swiftSettings: strict),
         .target(name: "EBNFImport", dependencies: ["ParsingCore"], swiftSettings: strict),
         .executableTarget(
             name: "swift-parsing",
