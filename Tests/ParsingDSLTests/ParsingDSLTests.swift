@@ -50,6 +50,39 @@ struct DSLCombinatorTests {
         #expect(Match.letter == .builtin(.letter))
     }
 
+    @Test("precedence wraps a body in a precedence rule")
+    func precedenceCombinator() {
+        #expect(
+            precedence(level: 3, associativity: .right) { seq { ref("a"); "^"; ref("a") } }.rule
+                == .precedence(
+                    level: 3, associativity: .right,
+                    .sequence([.reference("a"), .literal("^"), .reference("a")])))
+        #expect(
+            precedence(level: 1, associativity: .left) { ref("x") }.rule
+                == .precedence(level: 1, associativity: .left, .reference("x")))
+    }
+
+    @Test("lineComment matches a marker then the rest of the line, stopping at a newline")
+    func lineCommentMatcher() {
+        #expect(
+            lineComment("--")
+                == .sequence([
+                    .literal("--"),
+                    .repeated(min: 0, max: nil, .negated(.alternation([.literal("\n"), .literal("\r")]))),
+                ]))
+    }
+
+    @Test("blockComment matches an open, a non-greedy body, then a close")
+    func blockCommentMatcher() {
+        #expect(
+            blockComment(open: "--[[", close: "]]")
+                == .sequence([
+                    .literal("--[["),
+                    .repeated(min: 0, max: nil, .negated(.literal("]]"))),
+                    .literal("]]"),
+                ]))
+    }
+
     @Test("Control-flow builders: if, if/else and for")
     func controlFlow() {
         let includeB = true

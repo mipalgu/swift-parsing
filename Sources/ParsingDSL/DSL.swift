@@ -105,6 +105,28 @@ public func field(_ name: String, @RuleListBuilder _ body: () -> [Rule]) -> Rule
     RuleExpr(.field(name, collapse(body())))
 }
 
+/// Assigns a static precedence level and associativity to a sub-rule.
+///
+/// Use this on each recursive alternative of a directly left-recursive rule (for example a Lua-style
+/// expression ladder) so the ALL(*) left-recursion rewriter can build a precedence-climbing operator
+/// loop. Earlier (higher-`level`) alternatives bind more tightly. A left-associative operator forces its
+/// equal-precedence right operand to be refused (left-leaning grouping); a right-associative operator
+/// absorbs it (right-leaning grouping). The other engines, which consume the grammar as authored, see the
+/// wrapped sub-rule unchanged, so use this combinator only in a grammar intended for the ALL(*) engine.
+///
+/// - Parameters:
+///   - level: The binding precedence; higher binds more tightly.
+///   - associativity: The operator associativity used to resolve equal-precedence grouping.
+///   - body: The DSL body producing the rule the precedence applies to.
+/// - Returns: A `.precedence` rule expression wrapping the body.
+public func precedence(
+    level: Int,
+    associativity: Associativity,
+    @RuleListBuilder _ body: () -> [Rule]
+) -> RuleExpr {
+    RuleExpr(.precedence(level: level, associativity: associativity, collapse(body())))
+}
+
 /// Token-matcher constructors for the DSL.
 ///
 /// These build the data-only `TokenMatcher` values used by token rules, without any regular
@@ -155,6 +177,43 @@ public enum Match {
     /// - Parameter matcher: The optional matcher.
     /// - Returns: A repetition matcher allowing zero or one match.
     public static func optional(_ matcher: TokenMatcher) -> TokenMatcher { .repeated(min: 0, max: 1, matcher) }
+}
+
+/// Builds a line-comment trivia matcher for a grammar's `extras` array.
+///
+/// The matcher consumes the opening marker followed by every subsequent element up to (but not
+/// including) the next line terminator, so the comment is captured as trivia and the newline that ends it
+/// is left to be consumed as ordinary whitespace. Carriage return and line feed both terminate the run,
+/// so the same matcher works for Unix, Windows, and classic-Mac line endings.
+///
+/// - Parameter marker: The opening sequence introducing the comment (for example `"--"` for Lua or
+///   `"//"` for C-style line comments).
+/// - Returns: A ``TokenMatcher`` matching one whole line comment, suitable for the `extras` array.
+public func lineComment(_ marker: String) -> TokenMatcher {
+    let lineEnd = Match.oneOf(Match.lit("\n"), Match.lit("\r"))
+    return Match.seq(
+        Match.lit(marker),
+        Match.zeroOrMore(Match.not(lineEnd))
+    )
+}
+
+/// Builds a block-comment trivia matcher for a grammar's `extras` array.
+///
+/// The matcher consumes the opening delimiter, then the shortest run of elements that reaches the closing
+/// delimiter, then the closing delimiter, so a `--[[ ... ]]`-style block comment is captured as a single
+/// run of trivia. The body is matched non-greedily by forbidding the closing delimiter at each step,
+/// which keeps an unterminated comment from over-consuming and lets the surrounding grammar recover.
+///
+/// - Parameters:
+///   - open: The opening delimiter (for example `"--[["` for a fixed-level Lua block comment).
+///   - close: The closing delimiter (for example `"]]"`).
+/// - Returns: A ``TokenMatcher`` matching one whole block comment, suitable for the `extras` array.
+public func blockComment(open: String, close: String) -> TokenMatcher {
+    Match.seq(
+        Match.lit(open),
+        Match.zeroOrMore(Match.not(Match.lit(close))),
+        Match.lit(close)
+    )
 }
 
 /// A named token built from a token matcher.
