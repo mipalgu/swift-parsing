@@ -135,6 +135,54 @@ struct LexerTests {
             ])
     }
 
+    @Test("Tokenises the `<assoc=left>` and `<assoc=right>` element options")
+    func assocElementOptions() throws {
+        let tokens = try tokenise("e '^'<assoc=right> e |<assoc=left> e")
+        #expect(
+            tokens == [
+                .identifier("e"), .stringLiteral("^"), .elementOption(.right), .identifier("e"), .pipe,
+                .elementOption(.left), .identifier("e"), .endOfFile,
+            ])
+    }
+
+    @Test("Tolerates whitespace inside an `<assoc=...>` option")
+    func assocOptionWhitespace() throws {
+        let tokens = try tokenise("< assoc = right >")
+        #expect(tokens == [.elementOption(.right), .endOfFile])
+    }
+
+    @Test("Rejects an unsupported precedence element option")
+    func rejectsPrecedenceOption() {
+        #expect(throws: G4ImportError.unsupportedConstruct("element option '<p=3>'")) {
+            var lexer = G4Lexer("<p=3>")
+            _ = try lexer.tokenise()
+        }
+    }
+
+    @Test("Rejects an unsupported failure element option")
+    func rejectsFailOption() {
+        #expect(throws: G4ImportError.unsupportedConstruct("element option '<fail={x}>'")) {
+            var lexer = G4Lexer("<fail={x}>")
+            _ = try lexer.tokenise()
+        }
+    }
+
+    @Test("Rejects a multi-option element-option list")
+    func rejectsMultiOption() {
+        #expect(throws: G4ImportError.unsupportedConstruct("element option '<assoc=left,foo=bar>'")) {
+            var lexer = G4Lexer("<assoc=left,foo=bar>")
+            _ = try lexer.tokenise()
+        }
+    }
+
+    @Test("An unterminated element option throws")
+    func unterminatedOption() {
+        #expect(throws: G4ImportError.unterminatedLiteral) {
+            var lexer = G4Lexer("<assoc=right")
+            _ = try lexer.tokenise()
+        }
+    }
+
     @Test("Skips line and block comments")
     func comments() throws {
         let text = """
@@ -256,6 +304,51 @@ struct LoweringTests {
     func listLabel() throws {
         let grammar = try G4Grammar.grammar(fromString: "grammar G; r : k+='a' ;")
         #expect(grammar.rules["r"] == .field("k", .literal("a")))
+    }
+
+    /// The lowered `INT` primary (the last alternative) of a left-recursive `e` rule, so the precedence
+    /// tier assertions can compare the exact emitted `.choice` without reconstructing the token matcher.
+    private func intPrimary(of rule: Rule?) throws -> Rule {
+        let primary = try #require(rule.flatMap { if case .choice(let alts) = $0 { alts.last } else { nil } })
+        return primary
+    }
+
+    @Test("A directly left-recursive rule lowers to tightest-first precedence tiers")
+    func leftRecursivePrecedenceTiers() throws {
+        let grammar = try G4Grammar.grammar(
+            fromString: "grammar G; e : e '^' e | e '*' e | e '+' e | INT ; INT : [0-9]+ ;")
+        let operand: Rule = .reference("e")
+        let primary = try intPrimary(of: grammar.rules["e"])
+        #expect(
+            grammar.rules["e"]
+                == .choice([
+                    .precedence(
+                        level: 3, associativity: .left,
+                        .sequence([operand, .literal("^"), operand])),
+                    .precedence(
+                        level: 2, associativity: .left,
+                        .sequence([operand, .literal("*"), operand])),
+                    .precedence(
+                        level: 1, associativity: .left,
+                        .sequence([operand, .literal("+"), operand])),
+                    primary,
+                ]))
+    }
+
+    @Test("A leading `<assoc=right>` option records a right-associative precedence tier")
+    func leftRecursiveRightAssociativity() throws {
+        let grammar = try G4Grammar.grammar(
+            fromString: "grammar G; e :<assoc=right> e '^' e | INT ; INT : [0-9]+ ;")
+        let operand: Rule = .reference("e")
+        let primary = try intPrimary(of: grammar.rules["e"])
+        #expect(
+            grammar.rules["e"]
+                == .choice([
+                    .precedence(
+                        level: 1, associativity: .right,
+                        .sequence([operand, .literal("^"), operand])),
+                    primary,
+                ]))
     }
 
     @Test("The dot wildcard lowers to an any-element token")
