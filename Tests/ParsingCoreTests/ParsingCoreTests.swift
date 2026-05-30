@@ -203,6 +203,46 @@ struct GrammarIRTests {
     }
 }
 
+@Suite("Lookahead matcher")
+struct LookaheadMatcherTests {
+    @Test("Polarity is recorded on the case")
+    func polarity() {
+        let positive = TokenMatcher.lookahead(negate: false, .literal("x"))
+        let negative = TokenMatcher.lookahead(negate: true, .literal("x"))
+        guard case let .lookahead(positiveNegate, positiveInner) = positive else {
+            Issue.record("expected a lookahead matcher")
+            return
+        }
+        #expect(!positiveNegate)
+        #expect(positiveInner == .literal("x"))
+        guard case let .lookahead(negativeNegate, _) = negative else {
+            Issue.record("expected a lookahead matcher")
+            return
+        }
+        #expect(negativeNegate)
+    }
+
+    @Test("Equality and hashing distinguish polarity and inner matcher")
+    func equalityHashing() {
+        let a = TokenMatcher.lookahead(negate: true, .builtin(.letter))
+        #expect(a == .lookahead(negate: true, .builtin(.letter)))
+        #expect(a != .lookahead(negate: false, .builtin(.letter)))
+        #expect(a != .lookahead(negate: true, .builtin(.digit)))
+        #expect(Set([a, .lookahead(negate: true, .builtin(.letter))]).count == 1)
+    }
+
+    @Test("Lookahead nests other matchers, including itself")
+    func nesting() {
+        let nested = TokenMatcher.lookahead(
+            negate: false, .sequence([.literal("a"), .lookahead(negate: true, .literal("b"))]))
+        guard case .lookahead(false, .sequence(let parts)) = nested, parts.count == 2 else {
+            Issue.record("expected a nested lookahead structure")
+            return
+        }
+        #expect(parts[1] == .lookahead(negate: true, .literal("b")))
+    }
+}
+
 @Suite("Engine capabilities")
 struct CapabilityTests {
     @Test("Option set composition")

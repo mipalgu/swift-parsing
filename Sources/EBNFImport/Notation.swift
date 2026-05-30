@@ -36,4 +36,10 @@ enum Notation {
     static let commentOpen = "/*"
     /// The closing of a comment.
     static let commentClose = "*/"
+    /// The descriptive text used inside the comment that flags a positive lookahead, which W3C EBNF has
+    /// no surface form for.
+    static let positiveLookaheadNote = "followed-by"
+    /// The descriptive text used inside the comment that flags a negative lookahead, which W3C EBNF has
+    /// no surface form for.
+    static let negativeLookaheadNote = "not-followed-by"
 }

@@ -80,6 +80,11 @@ let package = Package(
             dependencies: ["ParsingDSL", "ParsingCore", "RecursiveDescent", "SwiftGLR", "SwiftALLStar", "Query"],
             swiftSettings: strict
         ),
+        .testTarget(
+            name: "LookaheadTests",
+            dependencies: ["ParsingCore", "ParsingDSL", "RecursiveDescent", "SwiftGLR", "SwiftALLStar"],
+            swiftSettings: strict
+        ),
     ]
 )
 

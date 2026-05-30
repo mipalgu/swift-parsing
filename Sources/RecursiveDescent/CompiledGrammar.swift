@@ -20,6 +20,7 @@ final class CompiledMatcher<Element: ParserElement>: @unchecked Sendable {
         case sequence([CompiledMatcher])
         case alternation([CompiledMatcher])
         case repeated(min: Int, max: Int?, CompiledMatcher)
+        case lookahead(negate: Bool, CompiledMatcher)
     }
     let kind: Kind
     init(_ kind: Kind) { self.kind = kind }
@@ -140,6 +141,8 @@ final class CompiledGrammar<Input: ParserInput>: @unchecked Sendable {
             return CompiledMatcher(.alternation(matchers.map { lower(matcher: $0) }))
         case .repeated(let min, let max, let inner):
             return CompiledMatcher(.repeated(min: min, max: max, lower(matcher: inner)))
+        case .lookahead(let negate, let inner):
+            return CompiledMatcher(.lookahead(negate: negate, lower(matcher: inner)))
         }
     }
 }

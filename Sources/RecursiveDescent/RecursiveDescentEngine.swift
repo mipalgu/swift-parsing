@@ -289,6 +289,13 @@ private final class Parser<Input: ParserInput> {
                 count += 1
             }
             return count >= min ? cursor : nil
+
+        case .lookahead(let negate, let inner):
+            // Zero-width: evaluate the inner matcher at `start` and never advance. The lookahead
+            // succeeds (returning the unchanged position) when the inner matcher's success agrees with
+            // the polarity, and fails otherwise.
+            let innerMatched = match(inner, at: start) != nil
+            return innerMatched == !negate ? start : nil
         }
     }
 

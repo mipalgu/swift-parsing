@@ -24,6 +24,12 @@ struct RegexToMatcherTests {
         #expect(RegexLowering.matcher(fromRegex: "(?:ab)") == .literal("ab"))
     }
 
+    @Test("Lookahead assertions lower to the lookahead matcher")
+    func lookahead() {
+        #expect(RegexLowering.matcher(fromRegex: "(?=ab)") == .lookahead(negate: false, .literal("ab")))
+        #expect(RegexLowering.matcher(fromRegex: #"(?!\d)"#) == .lookahead(negate: true, .builtin(.digit)))
+    }
+
     @Test("Quantifiers")
     func quantifiers() {
         #expect(RegexLowering.matcher(fromRegex: "a*") == .repeated(min: 0, max: nil, .literal("a")))
@@ -84,6 +90,12 @@ struct MatcherToRegexTests {
         // A multi-character literal under a quantifier is grouped.
         #expect(RegexLowering.regexString(from: .repeated(min: 0, max: nil, .literal("ab"))) == "(?:ab)*")
     }
+
+    @Test("Zero-width lookahead renders as a regex assertion")
+    func lookahead() {
+        #expect(RegexLowering.regexString(from: .lookahead(negate: false, .literal("a"))) == "(?=a)")
+        #expect(RegexLowering.regexString(from: .lookahead(negate: true, .builtin(.letter))) == "(?![A-Za-z])")
+    }
 }
 
 @Suite("Regex round-trip")
@@ -96,6 +108,9 @@ struct RegexRoundTripTests {
         .repeated(min: 1, max: nil, .negated(.literal("\""))),
         .alternation([.literal("e"), .literal("E")]),
         .repeated(min: 0, max: 1, .literal("-")),
+        .lookahead(negate: false, .literal("a")),
+        .lookahead(negate: true, .builtin(.digit)),
+        .sequence([.lookahead(negate: true, .builtin(.digit)), .literal("x")]),
     ])
     func roundTrip(_ matcher: TokenMatcher) {
         let regex = RegexLowering.regexString(from: matcher)

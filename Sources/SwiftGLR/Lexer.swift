@@ -141,6 +141,12 @@ struct Lexer<Input: ParserInput> {
                 count += 1
             }
             return count >= min ? cursor : nil
+
+        case .lookahead(let negate, let inner):
+            // Zero-width: evaluate the inner matcher at `start` without advancing the cursor. Succeeds
+            // (returning the unchanged position) when the inner match agrees with the polarity.
+            let innerMatched = match(inner, at: start) != nil
+            return innerMatched == !negate ? start : nil
         }
     }
 

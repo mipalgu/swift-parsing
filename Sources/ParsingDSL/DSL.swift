@@ -177,6 +177,25 @@ public enum Match {
     /// - Parameter matcher: The optional matcher.
     /// - Returns: A repetition matcher allowing zero or one match.
     public static func optional(_ matcher: TokenMatcher) -> TokenMatcher { .repeated(min: 0, max: 1, matcher) }
+    /// Asserts, without consuming input, that `matcher` matches at the current position (positive lookahead).
+    ///
+    /// The returned matcher is zero-width: it succeeds at a position exactly when `matcher` matches there
+    /// and leaves the cursor unchanged, so it can be sequenced with following matchers to express a
+    /// follow-requirement (for example, that a token must be followed by a particular character).
+    ///
+    /// - Parameter matcher: The matcher that must match at the current position.
+    /// - Returns: A zero-width positive-lookahead matcher.
+    public static func followedBy(_ matcher: TokenMatcher) -> TokenMatcher { .lookahead(negate: false, matcher) }
+    /// Asserts, without consuming input, that `matcher` does *not* match at the current position (negative lookahead).
+    ///
+    /// The returned matcher is zero-width: it succeeds at a position exactly when `matcher` fails to match
+    /// there and leaves the cursor unchanged, so it can be sequenced with following matchers to express a
+    /// follow-restriction (for example, that the keyword `if` is a keyword only when it is not followed by
+    /// a further identifier character, keeping `iffy` an identifier).
+    ///
+    /// - Parameter matcher: The matcher that must not match at the current position.
+    /// - Returns: A zero-width negative-lookahead matcher.
+    public static func notFollowedBy(_ matcher: TokenMatcher) -> TokenMatcher { .lookahead(negate: true, matcher) }
 }
 
 /// Builds a line-comment trivia matcher for a grammar's `extras` array.
