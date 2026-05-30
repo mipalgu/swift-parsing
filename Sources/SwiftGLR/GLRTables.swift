@@ -34,6 +34,18 @@ struct GLRTables: Sendable {
     /// The production id of the augmented accept production `S' → start $`.
     let acceptProductionID: Int
 
+    /// The number of distinct terminals; the stride of the flat shift table.
+    private let terminalCount: Int
+    /// The number of distinct nonterminals; the stride of the flat goto table.
+    private let nonterminalCount: Int
+    /// A dense shift table: `shiftFlat[state * terminalCount + terminal]`, `-1` where no shift exists.
+    private let shiftFlat: [Int]
+    /// A dense goto table: `gotoFlat[state * nonterminalCount + nt]`, `-1` where no goto exists.
+    private let gotoFlat: [Int]
+    /// A dense reduce table: `reduceFlat[state * (terminalCount + 1) + terminal + 1]`. Slot `0` of each
+    /// state's stripe holds the end-of-input reductions; empty cells share one empty array.
+    private let reduceFlat: [[ReduceAction]]
+
     /// Builds the parse tables from a grammar.
     ///
     /// - Parameter grammar: The grammar to prepare. Its start rule must already be validated as defined.
@@ -63,6 +75,36 @@ struct GLRTables: Sendable {
             nullable[nt] = automaton.isNullable(.nonterminal(nt))
         }
         self.nullableNonterminals = nullable
+
+        // Derive dense flat tables for the hot per-token lookups, eliminating dictionary hashing on the
+        // shift, goto and reduce accesses in the reducer and shifter loops.
+        let stateCount = automaton.states.count
+        let terminalCount = flattener.terminals.count
+        let nonterminalCount = flattener.nonterminalNames.count
+        self.terminalCount = terminalCount
+        self.nonterminalCount = nonterminalCount
+
+        var shiftFlat = Array(repeating: -1, count: stateCount * terminalCount)
+        for (state, row) in automaton.shift.enumerated() {
+            for (terminal, target) in row { shiftFlat[state * terminalCount + terminal] = target }
+        }
+        self.shiftFlat = shiftFlat
+
+        var gotoFlat = Array(repeating: -1, count: stateCount * nonterminalCount)
+        for (state, row) in automaton.goto.enumerated() {
+            for (nt, target) in row { gotoFlat[state * nonterminalCount + nt] = target }
+        }
+        self.gotoFlat = gotoFlat
+
+        let reduceStride = terminalCount + 1
+        var reduceFlat = Array(repeating: [ReduceAction](), count: stateCount * reduceStride)
+        for (state, row) in automaton.reduce.enumerated() {
+            for (terminal, actions) in row {
+                // The end-of-input key (-1) maps to slot 0; ordinary terminals to slot terminal + 1.
+                reduceFlat[state * reduceStride + terminal + 1] = actions
+            }
+        }
+        self.reduceFlat = reduceFlat
     }
 
     /// The reductions enabled in a state under a terminal lookahead (or end-of-input).
@@ -72,7 +114,7 @@ struct GLRTables: Sendable {
     ///   - terminal: The terminal id, or ``LR0Automaton/endOfInputKey`` for end-of-input.
     /// - Returns: The reduce actions, possibly empty.
     func reductions(state: Int, terminal: Int) -> [ReduceAction] {
-        reduce[state][terminal] ?? []
+        reduceFlat[state * (terminalCount + 1) + terminal + 1]
     }
 
     /// The shift target for a state and terminal, if any.
@@ -82,7 +124,19 @@ struct GLRTables: Sendable {
     ///   - terminal: The terminal id.
     /// - Returns: The next state, or `nil` if no shift is defined.
     func shiftTarget(state: Int, terminal: Int) -> Int? {
-        shift[state][terminal]
+        let target = shiftFlat[state * terminalCount + terminal]
+        return target < 0 ? nil : target
+    }
+
+    /// The goto target for a state and nonterminal, if any.
+    ///
+    /// - Parameters:
+    ///   - state: The LR state.
+    ///   - nonterminal: The nonterminal id.
+    /// - Returns: The next state, or `nil` if no goto is defined.
+    func gotoTarget(state: Int, nonterminal: Int) -> Int? {
+        let target = gotoFlat[state * nonterminalCount + nonterminal]
+        return target < 0 ? nil : target
     }
 
     /// The terminals that can be shifted from a state.

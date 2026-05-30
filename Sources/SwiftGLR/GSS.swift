@@ -72,22 +72,59 @@ final class GSS {
 
     /// Enumerates all paths of a given length backward from a vertex.
     ///
-    /// Each path is the ordered list of forest nodes labelling the traversed edges, from the stack top
-    /// toward the bottom, paired with the vertex reached at the far end. A zero-length path is the
-    /// vertex itself with no labels.
+    /// Each path is the ordered list of forest nodes labelling the traversed edges, from the stack
+    /// bottom toward the top, paired with the vertex reached at the far end.
     ///
     /// - Parameters:
     ///   - node: The starting vertex.
     ///   - length: The number of edges to traverse.
     /// - Returns: The paths as `(labels, base)` pairs.
     func paths(from node: GSSNode, length: Int) -> [(labels: [SPPFNode], base: GSSNode)] {
-        if length == 0 { return [([], node)] }
         var result: [(labels: [SPPFNode], base: GSSNode)] = []
-        for edge in node.edges {
-            for sub in paths(from: edge.target, length: length - 1) {
-                result.append((sub.labels + [edge.sppf], sub.base))
-            }
+        forEachPath(from: node, length: length) { labels, base in
+            result.append((labels, base))
         }
         return result
+    }
+
+    /// Visits every path of a given length backward from a vertex.
+    ///
+    /// Each path is the ordered list of forest nodes labelling the traversed edges, from the stack top
+    /// toward the bottom, paired with the vertex reached at the far end. A zero-length path is the
+    /// vertex itself with no labels. The labels are presented in a buffer reused across invocations, so
+    /// the visitor must copy them if it needs to retain them beyond the call.
+    ///
+    /// - Parameters:
+    ///   - node: The starting vertex.
+    ///   - length: The number of edges to traverse.
+    ///   - body: Invoked once per path with the ordered labels (stack top toward bottom) and the base
+    ///     vertex reached at the far end.
+    func forEachPath(
+        from node: GSSNode, length: Int, _ body: (_ labels: [SPPFNode], _ base: GSSNode) -> Void
+    ) {
+        if length == 0 {
+            body([], node)
+            return
+        }
+        var buffer = [SPPFNode]()
+        buffer.reserveCapacity(length)
+        walk(from: node, remaining: length, buffer: &buffer, body)
+    }
+
+    /// Depth-first walk that accumulates edge labels into a reused buffer, emitting top-to-bottom order.
+    private func walk(
+        from node: GSSNode, remaining: Int, buffer: inout [SPPFNode],
+        _ body: (_ labels: [SPPFNode], _ base: GSSNode) -> Void
+    ) {
+        for edge in node.edges {
+            buffer.append(edge.sppf)
+            if remaining == 1 {
+                // The buffer holds labels bottom-to-top as appended; reverse for top-to-bottom order.
+                body(buffer.reversed(), edge.target)
+            } else {
+                walk(from: edge.target, remaining: remaining - 1, buffer: &buffer, body)
+            }
+            buffer.removeLast()
+        }
     }
 }

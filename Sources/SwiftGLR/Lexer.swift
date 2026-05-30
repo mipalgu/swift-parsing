@@ -73,10 +73,11 @@ struct Lexer<Input: ParserInput> {
     /// - Returns: The recognised matches (possibly empty) and the index where trivia ended.
     func candidates(
         at start: Input.Index, expected: Set<Int>
-    ) -> (matches: [LexMatch<Input>], afterTrivia: Input.Index) {
+    ) -> (matches: [LexMatch<Input>], afterTrivia: Input.Index, triviaByteLength: Int) {
         let (afterTrivia, trivia) = consumeTrivia(at: start)
         let triviaBytes = trivia.utf8.count
         var matches: [LexMatch<Input>] = []
+        matches.reserveCapacity(expected.count)
         for terminalID in expected {
             guard let end = match(terminals[terminalID].matcher, at: afterTrivia) else { continue }
             let text = Input.text(of: input[afterTrivia..<end])
@@ -85,7 +86,7 @@ struct Lexer<Input: ParserInput> {
                     terminalID: terminalID, endIndex: end, byteLength: text.utf8.count, text: text,
                     leadingTrivia: trivia, triviaByteLength: triviaBytes))
         }
-        return (matches, afterTrivia)
+        return (matches, afterTrivia, triviaBytes)
     }
 
     // MARK: - Matcher interpreter (kept byte-identical to the recursive-descent engine)

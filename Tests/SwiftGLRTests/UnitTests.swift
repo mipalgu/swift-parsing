@@ -110,7 +110,7 @@ struct LexerTests {
         let (lexer, _) = makeLexer("100")
         let input = Substring.UTF8View.make(from: "100")
         let all = Set(0..<tables.terminals.count)
-        let (matches, _) = lexer.candidates(at: input.startIndex, expected: all)
+        let (matches, _, _) = lexer.candidates(at: input.startIndex, expected: all)
         let longest = matches.max { $0.byteLength < $1.byteLength }
         #expect(longest?.text == "100")
     }
@@ -122,10 +122,10 @@ struct LexerTests {
         let (lexer, _) = makeLexer("true")
         let input = Substring.UTF8View.make(from: "true")
         // With only `true` expected, the matcher recognises it.
-        let (matches, _) = lexer.candidates(at: input.startIndex, expected: Set([trueID]))
+        let (matches, _, _) = lexer.candidates(at: input.startIndex, expected: Set([trueID]))
         #expect(matches.count == 1)
         // With nothing expected, there are no candidates.
-        let (none, _) = lexer.candidates(at: input.startIndex, expected: [])
+        let (none, _, _) = lexer.candidates(at: input.startIndex, expected: [])
         #expect(none.isEmpty)
     }
 }

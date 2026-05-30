@@ -44,7 +44,7 @@ public struct GLREngine<Input: ParserInput>: ParserEngine {
         let parser = GLRParser<Input>(tables: tables, input: input)
         let outcome = parser.run(sppf: sppf)
 
-        var builder = TreeBuilder(tables: tables)
+        var builder = TreeBuilder(tables: tables, disambiguating: sppf.hasPacking)
         var diagnostics: [Diagnostic] = []
         let documentKind = SyntaxKind(startRuleName, isNamed: true)
 

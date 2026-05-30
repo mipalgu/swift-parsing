@@ -66,11 +66,22 @@ struct GLRParser<Input: ParserInput> {
     }
 
     /// Per-step mutable state threaded through reduction and shifting.
+    ///
+    /// A single instance is reused across input steps; ``reset()`` clears its collections while
+    /// retaining their backing storage, so the steady-state parse loop performs no per-step set or
+    /// array reallocation.
     private final class Step {
         var reductionQueue: [ReductionTask] = []
         var shiftTasks: [ShiftTask] = []
         var enqueuedReductions: Set<ReductionKey> = []
         var seededShift: Set<ShiftKey> = []
+
+        func reset() {
+            reductionQueue.removeAll(keepingCapacity: true)
+            shiftTasks.removeAll(keepingCapacity: true)
+            enqueuedReductions.removeAll(keepingCapacity: true)
+            seededShift.removeAll(keepingCapacity: true)
+        }
     }
 
     /// Creates a parser bound to prepared tables and an input view.
@@ -98,6 +109,7 @@ struct GLRParser<Input: ParserInput> {
         var completedRoot: SPPFNode? = nil
         var rootEndOffset = 0
         var rootEndCursor = cursor
+        let step = Step()
 
         while true {
             // The lexer must try every terminal the live states could act on: those they can shift now,
@@ -105,19 +117,22 @@ struct GLRParser<Input: ParserInput> {
             // a not-yet-shiftable terminal still fires).
             var expected: Set<Int> = []
             for node in gss.frontier.values {
-                for terminal in tables.shiftableTerminals(state: node.state) { expected.insert(terminal) }
-                for terminal in tables.reduceLookaheads(state: node.state) where terminal >= 0 {
+                for terminal in tables.shift[node.state].keys { expected.insert(terminal) }
+                for terminal in tables.reduce[node.state].keys where terminal >= 0 {
                     expected.insert(terminal)
                 }
             }
-            let (matches, afterTrivia) = lexer.candidates(at: cursor, expected: expected)
+            let (matches, afterTrivia, triviaByteLength) = lexer.candidates(
+                at: cursor, expected: expected)
             let atEnd = afterTrivia == input.endIndex
-            let triviaBytes = byteOffset + bytes(from: cursor, to: afterTrivia)
+            let triviaBytes = byteOffset + triviaByteLength
 
-            var lookaheads: Set<Int> = Set(matches.map { $0.terminalID })
+            var lookaheads: Set<Int> = []
+            lookaheads.reserveCapacity(matches.count + 1)
+            for match in matches { lookaheads.insert(match.terminalID) }
             if atEnd || matches.isEmpty { lookaheads.insert(LR0Automaton.endOfInputKey) }
 
-            let step = Step()
+            step.reset()
             for node in gss.frontier.values {
                 seed(node: node, matches: matches, lookaheads: lookaheads, step: step)
             }
@@ -204,30 +219,39 @@ struct GLRParser<Input: ParserInput> {
     private func enqueueReductions(
         at node: GSSNode, alongEdge: GSSEdge?, lookaheads: Set<Int>, step: Step
     ) {
+        let nodeID = ObjectIdentifier(node)
         for la in lookaheads {
             for action in tables.reductions(state: node.state, terminal: la) {
                 if action.length == 0 {
                     let key = ReductionKey(
-                        node: ObjectIdentifier(node), production: action.production, length: 0,
+                        node: nodeID, production: action.production, length: 0,
                         viaTarget: nil, viaSPPF: nil)
                     if step.enqueuedReductions.insert(key).inserted {
                         step.reductionQueue.append(
                             ReductionTask(from: node, action: action, viaEdge: nil))
                     }
+                } else if let edge = alongEdge {
+                    enqueueEdgeReduction(
+                        node: node, nodeID: nodeID, action: action, edge: edge, step: step)
                 } else {
-                    let edges = alongEdge.map { [$0] } ?? node.edges
-                    for edge in edges {
-                        let key = ReductionKey(
-                            node: ObjectIdentifier(node), production: action.production,
-                            length: action.length, viaTarget: ObjectIdentifier(edge.target),
-                            viaSPPF: ObjectIdentifier(edge.sppf))
-                        if step.enqueuedReductions.insert(key).inserted {
-                            step.reductionQueue.append(
-                                ReductionTask(from: node, action: action, viaEdge: edge))
-                        }
+                    for edge in node.edges {
+                        enqueueEdgeReduction(
+                            node: node, nodeID: nodeID, action: action, edge: edge, step: step)
                     }
                 }
             }
+        }
+    }
+
+    /// Enqueues a length-one-or-more reduction anchored to a single outgoing edge, deduplicating it.
+    private func enqueueEdgeReduction(
+        node: GSSNode, nodeID: ObjectIdentifier, action: ReduceAction, edge: GSSEdge, step: Step
+    ) {
+        let key = ReductionKey(
+            node: nodeID, production: action.production, length: action.length,
+            viaTarget: ObjectIdentifier(edge.target), viaSPPF: ObjectIdentifier(edge.sppf))
+        if step.enqueuedReductions.insert(key).inserted {
+            step.reductionQueue.append(ReductionTask(from: node, action: action, viaEdge: edge))
         }
     }
 
@@ -265,24 +289,25 @@ struct GLRParser<Input: ParserInput> {
         let nt = production.lhs
 
         // Enumerate the reduction paths. A length-zero reduction starts and ends at the node itself; a
-        // longer reduction is anchored to its first edge and walks the remaining length from there.
-        let enumerated: [(labels: [SPPFNode], base: GSSNode)]
-        if let edge = task.viaEdge {
-            enumerated = gss.paths(from: edge.target, length: task.action.length - 1).map {
-                ($0.labels + [edge.sppf], $0.base)
+        // longer reduction is anchored to its first edge and walks the remaining length from there. The
+        // anchoring edge's label, when present, is the last child (closest to the stack top).
+        let anchor = task.viaEdge?.sppf
+        let walkFrom = task.viaEdge?.target ?? task.from
+        let walkLength = task.viaEdge != nil ? task.action.length - 1 : task.action.length
+
+        gss.forEachPath(from: walkFrom, length: walkLength) { labels, base in
+            guard let goState = tables.gotoTarget(state: base.state, nonterminal: nt) else { return }
+
+            var children: [SPPFNode]
+            if let anchor {
+                children = labels
+                children.append(anchor)
+            } else {
+                children = labels
             }
-        } else {
-            enumerated = gss.paths(from: task.from, length: task.action.length)
-        }
-
-        for path in enumerated {
-            let base = path.base
-            guard let goState = tables.goto[base.state][nt] else { continue }
-
-            var children = path.labels
             let suffixOffset = children.last?.end ?? contentOffset
             for symbol in task.action.nullableSuffix {
-                children.append(nullableSubtree(for: symbol, at: suffixOffset, sppf: sppf))
+                children.append(self.nullableSubtree(for: symbol, at: suffixOffset, sppf: sppf))
             }
             let start = children.first?.start ?? contentOffset
             let end = children.last?.end ?? contentOffset
@@ -296,11 +321,11 @@ struct GLRParser<Input: ParserInput> {
             if isNewNode {
                 // A brand-new node: enqueue its length-zero reductions, the length-one-or-more
                 // reductions along its (single, new) edge, and its shifts.
-                enqueueReductions(at: target, alongEdge: nil, lookaheads: lookaheads, step: step)
-                enqueueShifts(at: target, matches: matches, step: step)
+                self.enqueueReductions(at: target, alongEdge: nil, lookaheads: lookaheads, step: step)
+                self.enqueueShifts(at: target, matches: matches, step: step)
             } else if edgeIsNew {
                 // An existing node gained an edge: re-process only the reductions along that edge.
-                enqueueReductions(
+                self.enqueueReductions(
                     at: target, alongEdge: target.edges.last, lookaheads: lookaheads, step: step)
             }
         }
@@ -354,16 +379,31 @@ struct GLRParser<Input: ParserInput> {
 
     /// Chooses the surviving shifts under the longest-match policy.
     private func disambiguateLexically(_ tasks: [ShiftTask]) -> [ShiftTask] {
-        guard let maxLength = tasks.map({ $0.match.byteLength }).max() else { return [] }
-        let longest = tasks.filter { $0.match.byteLength == maxLength }
-        let terminalIDs = Set(longest.map { $0.match.terminalID })
-        if terminalIDs.count == 1 { return longest }
-        let chosenTerminal = terminalIDs.sorted().first!
-        return longest.filter { $0.match.terminalID == chosenTerminal }
-    }
+        if tasks.isEmpty { return [] }
+        if tasks.count == 1 { return tasks }
 
-    private func bytes(from start: Input.Index, to end: Input.Index) -> Int {
-        guard start != end else { return 0 }
-        return Input.text(of: input[start..<end]).utf8.count
+        // Longest byte length wins; among equally long, the lowest terminal id is chosen.
+        var maxLength = 0
+        for task in tasks where task.match.byteLength > maxLength { maxLength = task.match.byteLength }
+
+        // Determine whether the longest matches already agree on one terminal, tracking its lowest id.
+        var lowestTerminal = Int.max
+        var singleTerminal = true
+        for task in tasks where task.match.byteLength == maxLength {
+            let id = task.match.terminalID
+            if lowestTerminal == Int.max {
+                lowestTerminal = id
+            } else if id != lowestTerminal {
+                singleTerminal = false
+                if id < lowestTerminal { lowestTerminal = id }
+            }
+        }
+
+        var result: [ShiftTask] = []
+        result.reserveCapacity(tasks.count)
+        for task in tasks where task.match.byteLength == maxLength {
+            if singleTerminal || task.match.terminalID == lowestTerminal { result.append(task) }
+        }
+        return result
     }
 }

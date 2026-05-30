@@ -64,6 +64,11 @@ final class SPPF {
     private var terminalNodes: [Int: SPPFNode] = [:]
     private var nextLeafID = 0
     private var nextEpsilonID = 0
+    /// Whether any node ended up with more than one derivation family (a packed local ambiguity).
+    ///
+    /// When this stays `false` the forest is a plain tree, so the tree builder can skip the cycle-
+    /// detection bookkeeping that is only needed to disambiguate packed nodes.
+    private(set) var hasPacking = false
 
     private struct NTKey: Hashable {
         let nt: Int
@@ -128,6 +133,7 @@ final class SPPF {
         {
             if zip(family.children, children).allSatisfy({ $0 === $1 }) { return }
         }
+        if !node.families.isEmpty { hasPacking = true }
         node.families.append(PackedFamily(production: production, children: children))
     }
 }

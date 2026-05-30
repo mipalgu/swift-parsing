@@ -18,11 +18,19 @@ struct TreeBuilder {
     /// self-referential family in the forest. Rejecting any family that re-enters a node already on the
     /// path collapses such a cycle to its non-cyclic (empty) derivation, mirroring the reference engine.
     private var active: Set<ObjectIdentifier> = []
+    /// Whether the forest contains any packed (multiply derived) node.
+    ///
+    /// When the forest is a plain tree no family is ever rejected for cyclicity and no node carries
+    /// alternatives, so the recursion-path bookkeeping in ``active`` serves no purpose and is skipped.
+    private let disambiguating: Bool
 
     /// Creates a tree builder bound to the parse tables.
-    /// - Parameter tables: The immutable parse tables.
-    init(tables: GLRTables) {
+    /// - Parameters:
+    ///   - tables: The immutable parse tables.
+    ///   - disambiguating: Whether the forest packs any ambiguity needing cycle-aware disambiguation.
+    init(tables: GLRTables, disambiguating: Bool = true) {
         self.tables = tables
+        self.disambiguating = disambiguating
     }
 
     /// Builds the children of the start-symbol root, ignoring its own opaque wrapper.
@@ -36,10 +44,10 @@ struct TreeBuilder {
         guard case .nonterminal(let nt, _, _) = root.label, let family = chooseFamily(root, nt: nt) else {
             return []
         }
-        active.insert(ObjectIdentifier(root))
-        defer { active.remove(ObjectIdentifier(root)) }
+        if disambiguating { active.insert(ObjectIdentifier(root)) }
+        defer { if disambiguating { active.remove(ObjectIdentifier(root)) } }
         var kids: [GreenChild] = []
-        for child in family.children { kids += emit(child) }
+        for child in family.children { emit(child, into: &kids) }
         return kids
     }
 
@@ -48,37 +56,62 @@ struct TreeBuilder {
     /// - Parameter node: The forest node to render.
     /// - Returns: The ordered child slots the node contributes.
     mutating func emit(_ node: SPPFNode) -> [GreenChild] {
+        var out: [GreenChild] = []
+        emit(node, into: &out)
+        return out
+    }
+
+    /// Appends the children that a forest node contributes to its parent into an accumulator.
+    ///
+    /// Threading a single accumulator down the walk avoids allocating and concatenating a fresh array
+    /// for every node, which is the dominant cost when collapsing a large forest.
+    ///
+    /// - Parameters:
+    ///   - node: The forest node to render.
+    ///   - out: The accumulator to append the node's contributed child slots to.
+    private mutating func emit(_ node: SPPFNode, into out: inout [GreenChild]) {
         switch node.label {
         case .terminal(let terminalID, _, _, _):
             let term = tables.terminals[terminalID]
-            guard let leaf = node.lex else { return [] }
+            guard let leaf = node.lex else { return }
             let token = GreenNode.token(
                 SyntaxKind(term.kindName, isNamed: term.isNamed),
                 text: leaf.text, leadingTrivia: leaf.leadingTrivia)
-            return [GreenChild(node: token)]
+            out.append(GreenChild(node: token))
 
         case .epsilon:
-            return []
+            return
 
         case .nonterminal(let nt, _, _):
-            guard let family = chooseFamily(node, nt: nt) else { return [] }
-            active.insert(ObjectIdentifier(node))
-            defer { active.remove(ObjectIdentifier(node)) }
-            var kids: [GreenChild] = []
-            for child in family.children { kids += emit(child) }
-            guard let productionID = family.production else { return kids }
+            guard let family = chooseFamily(node, nt: nt) else { return }
+            if disambiguating { active.insert(ObjectIdentifier(node)) }
+            defer { if disambiguating { active.remove(ObjectIdentifier(node)) } }
+
+            guard let productionID = family.production else {
+                // No production: splice the children directly into the parent.
+                for child in family.children { emit(child, into: &out) }
+                return
+            }
             let production = tables.productions[productionID]
             switch production.emit {
             case .transparent:
-                return kids
+                // Transparent: children flow straight into the parent's accumulator.
+                for child in family.children { emit(child, into: &out) }
             case .field(let name):
+                var kids: [GreenChild] = []
+                kids.reserveCapacity(family.children.count)
+                for child in family.children { emit(child, into: &kids) }
                 if kids.count == 1 {
-                    return [GreenChild(field: name, node: kids[0].node)]
+                    out.append(GreenChild(field: name, node: kids[0].node))
+                } else {
+                    let group = GreenNode.node(SyntaxKind("group", isNamed: false), children: kids)
+                    out.append(GreenChild(field: name, node: group))
                 }
-                let group = GreenNode.node(SyntaxKind("group", isNamed: false), children: kids)
-                return [GreenChild(field: name, node: group)]
             case .opaque(let kind):
-                return [GreenChild(node: GreenNode.node(kind, children: kids))]
+                var kids: [GreenChild] = []
+                kids.reserveCapacity(family.children.count)
+                for child in family.children { emit(child, into: &kids) }
+                out.append(GreenChild(node: GreenNode.node(kind, children: kids)))
             }
         }
     }
@@ -91,6 +124,9 @@ struct TreeBuilder {
     /// ordered backtracking would pick.
     private mutating func chooseFamily(_ node: SPPFNode, nt: Int) -> PackedFamily? {
         guard !node.families.isEmpty else { return nil }
+
+        // The overwhelmingly common case is a single, acyclic family: avoid the filtering allocation.
+        if node.families.count == 1 { return node.families[0] }
 
         // Reject families that re-enter a node already on the recursion path: they form a derivation
         // cycle (a nullable recursive rule over an empty span) and must not be expanded.
