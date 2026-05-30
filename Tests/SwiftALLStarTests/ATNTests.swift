@@ -88,6 +88,88 @@ struct ATNTests {
         }
     }
 
+    // MARK: - Precedence carrier (left-recursion right operand)
+
+    /// The arithmetic ATN: `expr -> expr '*' expr | expr '+' expr | id`, after the rewrite.
+    private func arithmeticATN() throws -> ATN {
+        let grammar = Grammar(name: "arith", startRule: "expr", rules: [
+            "expr": .choice([
+                .precedence(level: 2, associativity: .left,
+                    .sequence([.reference("expr"), .literal("*"), .reference("expr")])),
+                .precedence(level: 1, associativity: .left,
+                    .sequence([.reference("expr"), .literal("+"), .reference("expr")])),
+                .token(name: "id", matcher: Match.oneOrMore(Match.letter), isNamed: true),
+            ]),
+        ], extras: [])
+        return try ATNBuilder.build(LeftRecursionRewriter.rewrite(grammar))
+    }
+
+    /// The enter-at precedences carried by every `expr` self-call edge, paired with the operator literal
+    /// that immediately precedes the edge (so left- vs right-associativity can be told apart).
+    private func selfCallEnterPrecedences(in atn: ATN, rule: String) -> [Int?] {
+        atn.states
+            .filter { $0.rule == rule }
+            .flatMap(\.transitions)
+            .compactMap { transition -> Int? in
+                if case .rule(_, _, rule, _, _, _, _, let enterPrecedence) = transition { return enterPrecedence }
+                return nil
+            }
+    }
+
+    @Test("The right-operand rule edge carries level+1 for left-associative operators")
+    func leftAssociativeRightOperandEntersAtLevelPlusOne() throws {
+        let atn = try arithmeticATN()
+        // `*` is declared at level 2 and `+` at level 1, both left-associative, so their right operands
+        // re-enter at 3 and 2 respectively.
+        let enterPrecedences = Set(selfCallEnterPrecedences(in: atn, rule: "expr"))
+        #expect(enterPrecedences == [3, 2])
+    }
+
+    @Test("The right-operand rule edge carries level for right-associative operators")
+    func rightAssociativeRightOperandEntersAtLevel() throws {
+        let grammar = Grammar(name: "assign", startRule: "e", rules: [
+            "e": .choice([
+                .precedence(level: 1, associativity: .right,
+                    .sequence([.reference("e"), .literal("="), .reference("e")])),
+                .token(name: "id", matcher: Match.oneOrMore(Match.letter), isNamed: true),
+            ]),
+        ], extras: [])
+        let atn = try ATNBuilder.build(LeftRecursionRewriter.rewrite(grammar))
+        // `=` is right-associative at level 1, so its right operand re-enters at exactly 1, not 2.
+        #expect(selfCallEnterPrecedences(in: atn, rule: "e") == [1])
+    }
+
+    @Test("Ordinary rule edges carry no enter-at precedence")
+    func ordinaryRuleEdgesCarryNoEnterPrecedence() throws {
+        let atn = try jsonATN()
+        // JSON has no precedence wrappers and no self-recursion, so no rule edge carries an enter-at
+        // precedence: the whole precedence path is dead code for it.
+        var sawRuleEdge = false
+        for state in atn.states {
+            for transition in state.transitions {
+                if case .rule(_, _, _, _, _, _, _, let enterPrecedence) = transition {
+                    sawRuleEdge = true
+                    #expect(enterPrecedence == nil)
+                }
+            }
+        }
+        #expect(sawRuleEdge)
+    }
+
+    @Test("Both decisions of a left-recursive rule are predicated and route through full LL")
+    func leftRecursiveDecisionsArePredicated() throws {
+        let atn = try arithmeticATN()
+        let predictor = Predictor(atn: atn, input: Substring.UTF8View.make(from: ""), extras: [])
+        let decisions = decisionStates(in: atn, rule: "expr").compactMap { atn[$0].decision }
+        // The rewritten `expr` has exactly two decisions: the operator-loop-stop (repeat) decision and the
+        // operator-choice decision. Both reach a precedence-guard predicate, so both are recognised as
+        // predicated and never reuse a precedence-0 SLL DFA state.
+        #expect(decisions.count == 2)
+        for decision in decisions {
+            #expect(predictor.isPredicated(decision))
+        }
+    }
+
     // MARK: - Helpers
 
     private func findDecisionState(in atn: ATN, rule: String) -> ATNStateID? {

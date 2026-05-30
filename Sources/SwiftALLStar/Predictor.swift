@@ -73,6 +73,17 @@ final class Predictor<Input: ParserInput> {
             callStack: callStack, minPrecedence: minPrecedence)
     }
 
+    /// Whether a decision is guarded by a semantic predicate, exposed for white-box tests.
+    ///
+    /// A predicated decision is routed straight to full-LL prediction rather than the precedence-0 SLL DFA,
+    /// which is what lets the operator-loop guard be evaluated; the tests assert this routing holds for a
+    /// left-recursive rule's loop-stop and operator-choice decisions.
+    /// - Parameter decision: The decision to query.
+    /// - Returns: `true` if a predicate edge is reachable from the decision before consuming a token.
+    func isPredicated(_ decision: DecisionID) -> Bool {
+        decisionHasPredicate(decision)
+    }
+
     /// Whether any alternative at a decision is guarded by a semantic predicate.
     ///
     /// The answer depends only on the static ATN, so it is memoised per decision: the recursive reachability
