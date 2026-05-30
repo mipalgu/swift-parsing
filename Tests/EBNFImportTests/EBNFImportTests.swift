@@ -499,4 +499,26 @@ struct ExportTests {
         let reimported = try EBNFGrammar.grammar(from: text, startRule: "s")
         #expect(reimported.rules["s"] == .token(name: "_class", matcher: matcher, isNamed: false))
     }
+
+    @Test("A lookahead has no EBNF surface form, so it exports as a visible comment, not silently dropped")
+    func lookaheadExportsAsComment() throws {
+        let positive: [String: Rule] = [
+            "s": .token(name: "k", matcher: .lookahead(negate: false, .literal("a")), isNamed: false)
+        ]
+        let positiveText = EBNFGrammar.export(Grammar(name: "g", startRule: "s", rules: positive))
+        #expect(positiveText.contains("/*"))
+        #expect(positiveText.contains("followed-by"))
+        #expect(positiveText.contains("'a'"))
+        #expect(positiveText.contains("*/"))
+
+        // A lookahead guarding a real terminal exports the terminal plus the comment; on re-import the
+        // comment is skipped, leaving the terminal, so the construct is visible yet inert (never dropped
+        // and never corrupting the re-imported grammar).
+        let guarded = TokenMatcher.sequence([.lookahead(negate: true, .builtin(.digit)), .literal("x")])
+        let negative: [String: Rule] = ["s": .token(name: "k", matcher: guarded, isNamed: false)]
+        let negativeText = EBNFGrammar.export(Grammar(name: "g", startRule: "s", rules: negative))
+        #expect(negativeText.contains("not-followed-by"))
+        let reimported = try EBNFGrammar.grammar(from: negativeText, startRule: "s")
+        #expect(reimported.rules["s"] == .literal("x"))
+    }
 }
