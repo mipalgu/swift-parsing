@@ -178,6 +178,7 @@ struct PropertyTests {
         }
     }
 
+    #if canImport(Dispatch)
     @Test("Deeply nested input terminates and matches the reference engine")
     func deepNesting() {
         // The work runs on a thread with an ample stack: tree depth maps to native recursion depth in
@@ -197,8 +198,10 @@ struct PropertyTests {
         #expect(outcome.text == input)
         #expect(outcome.glr == outcome.rd)
     }
+    #endif
 }
 
+#if canImport(Dispatch)
 /// Runs a value-returning body on a dedicated thread with a large stack and returns its result.
 ///
 /// Deep recursion in the body is then bounded by the algorithm rather than by a test task's small stack.
@@ -222,3 +225,4 @@ private func runWithLargeStack<Result: Sendable>(_ body: @escaping @Sendable () 
 private final class ResultBox<Value: Sendable>: @unchecked Sendable {
     var value: Value?
 }
+#endif
