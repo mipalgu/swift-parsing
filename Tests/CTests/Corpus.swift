@@ -48,6 +48,10 @@ enum Corpus {
         "int add(int a, int b) { return a + b; }",
         "void noop(void) {}",
         "int *getp(int *q) { return q; }",
+        // Void-typed pointer parameters (a lone `void` parses as one unnamed parameter declaration).
+        "void f(void *p) { }",
+        "void f(void **pp) { }",
+        "void g(int x, void *p) { return; }",
         "double scale(double x, double factor) { return x * factor; }",
         // Statements inside bodies.
         "void f(void) { int x = 1; x = x + 2; }",

@@ -40,6 +40,19 @@ import ParsingCore
 /// - The `sizeof` operator is modelled in its expression form (`sizeof x`) and its parenthesised
 ///   type-name form (`sizeof(int)`); the parenthesised form shares the cast's type-name production.
 /// - Compound literals (`(int){0}`) and `_Generic` selections are out of scope.
+/// - The explicitly-empty parameter list `(void)` is represented as a parameter list holding a single
+///   unnamed `void` parameter declaration, not as a distinguished empty list. This is a deliberate
+///   simplification of C's empty-parameter-list marker, chosen so the recursive-descent, GLR, and ALL(*)
+///   engines agree on a byte-identical tree without rule-level lookahead: the general
+///   parameter-declaration production already parses a lone `void` as a type with no declarator, so no
+///   special-cased bare-keyword alternative (which the greedy recursive-descent engine would commit to
+///   ahead of a `void *p` parameter) is needed.
+/// - Function **prototypes and declarations** with a parameter list and no body, such as
+///   `void f(int **pp);`, are out of scope and are rejected by all three engines. The grammar admits a
+///   parenthesised parameter list only inside a function definition, which requires a compound-statement
+///   body; a top-level declaration uses the plain declarator production, which has no
+///   function-declarator form. (The three engines may recover differently on this rejected input,
+///   reflecting the documented non-lossless recovery limitation of the ALL(*) engine.)
 public enum CGrammar {
     // MARK: - Lexical core
 
@@ -317,17 +330,18 @@ public enum CGrammar {
                     ")"
                 }
             }
+            // A parameter list: one or more comma-separated parameter declarations. A lone `void` (C's
+            // explicitly-empty-list marker, as in `f(void)`) is admitted uniformly as a single unnamed
+            // `void` parameter declaration rather than as a special bare-keyword alternative, so the same
+            // production parses `void *p`, `void **pp`, and `void` identically on all three engines without
+            // an ordered-choice trap. See ``CGrammar`` for the deliberate `(void)` simplification.
             rule("parameter_list") {
-                choice {
-                    // A lone `void` parameter list (an explicitly empty list), guarded to a word boundary.
-                    keyword("void")
-                    seq {
-                        ref("parameter_declaration")
-                        repeat0 {
-                            seq {
-                                ","
-                                ref("parameter_declaration")
-                            }
+                seq {
+                    ref("parameter_declaration")
+                    repeat0 {
+                        seq {
+                            ","
+                            ref("parameter_declaration")
                         }
                     }
                 }
