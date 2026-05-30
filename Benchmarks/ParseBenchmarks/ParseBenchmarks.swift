@@ -62,6 +62,42 @@ private func makeLua(functionCount: Int) -> String {
     return parts.joined(separator: "\n")
 }
 
+/// Builds a representative C translation unit with the given number of functions.
+///
+/// Each function exercises a spread of the grammar (typed parameters, local declarations, a `for` loop, an
+/// `if`/`else`, arithmetic, comparison and assignment operators across several precedence tiers, a function
+/// call, a pointer dereference, and a line comment), so the benchmark reflects realistic mixed C rather
+/// than a single construct and stresses the deep operator ladder.
+/// - Parameter functionCount: The number of functions in the generated translation unit.
+/// - Returns: Valid C source as text.
+private func makeC(functionCount: Int) -> String {
+    var parts: [String] = []
+    parts.reserveCapacity(functionCount + 2)
+    parts.append("// Generated C translation unit for benchmarking")
+    parts.append("int counter = 0;")
+    for index in 0..<functionCount {
+        parts.append(
+            """
+            int process_\(index)(int *items, int count, int factor) {
+                // accumulate a weighted sum over the items
+                int total = 0;
+                for (int i = 0; i < count; i = i + 1) {
+                    int value = items[i] * factor + \(index);
+                    if (value > 0 && value <= 100) {
+                        total += value;
+                    } else {
+                        total -= value;
+                    }
+                }
+                counter = counter + total;
+                return total >= 0 ? total : -total;
+            }
+            """)
+    }
+    parts.append("int total(void) { return counter; }")
+    return parts.joined(separator: "\n")
+}
+
 let benchmarks: @Sendable () -> Void = {
     Benchmark.defaultConfiguration.metrics = [
         .wallClock,
@@ -115,6 +151,26 @@ let benchmarks: @Sendable () -> Void = {
         benchmark.startMeasurement()
         for _ in benchmark.scaledIterations {
             blackHole(engine.parse(largeLuaSource))
+        }
+    }
+
+    let cGrammar = CGrammar.translationUnit()
+    let smallCSource = Source(makeC(functionCount: 8))
+    let largeCSource = Source(makeC(functionCount: 256))
+
+    Benchmark("Parse small C (UTF-8, 8 functions)") { benchmark in
+        let engine = try UTF8Parser(grammar: cGrammar)
+        benchmark.startMeasurement()
+        for _ in benchmark.scaledIterations {
+            blackHole(engine.parse(smallCSource))
+        }
+    }
+
+    Benchmark("Parse large C (UTF-8, 256 functions)") { benchmark in
+        let engine = try UTF8Parser(grammar: cGrammar)
+        benchmark.startMeasurement()
+        for _ in benchmark.scaledIterations {
+            blackHole(engine.parse(largeCSource))
         }
     }
 }
