@@ -100,8 +100,9 @@ final class CompiledGrammar<Input: ParserInput>: @unchecked Sendable {
             if case .unresolvedReference = body.kind {
                 return CompiledRule(.unresolvedReference)
             }
-            return CompiledRule(.reference(
-                body: body, kind: SyntaxKind(name, isNamed: true), isHidden: name.hasPrefix("_")))
+            return CompiledRule(
+                .reference(
+                    body: body, kind: SyntaxKind(name, isNamed: true), isHidden: name.hasPrefix("_")))
         case .sequence(let rules):
             return CompiledRule(.sequence(rules.map { lower(rule: $0, ruleNode: ruleNode) }))
         case .choice(let alternatives):

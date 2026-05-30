@@ -215,9 +215,11 @@ struct LR0Automaton {
             }
         }
 
-        states = ordered.map { Array($0).sorted { lhs, rhs in
-            lhs.production != rhs.production ? lhs.production < rhs.production : lhs.dot < rhs.dot
-        } }
+        states = ordered.map {
+            Array($0).sorted { lhs, rhs in
+                lhs.production != rhs.production ? lhs.production < rhs.production : lhs.dot < rhs.dot
+            }
+        }
     }
 
     // MARK: - Tables

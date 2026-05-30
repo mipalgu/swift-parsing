@@ -80,7 +80,8 @@ enum ATNBuilder {
                 let field = currentField
                 currentField = nil
                 let q = newState(rule: owner)
-                addTransition(.atom(matcher: matcher, isNamed: isNamed, name: name, field: field, target: q), from: from)
+                addTransition(
+                    .atom(matcher: matcher, isNamed: isNamed, name: name, field: field, target: q), from: from)
                 return q
 
             case .reference(let name):

@@ -274,7 +274,8 @@ final class Predictor<Input: ParserInput> {
         for config in configs.configs {
             for transition in atn[config.state].transitions {
                 if case .atom(let matcher, _, _, _, _) = transition,
-                    let end = matchToken(matcher, in: input, at: tokenStart) {
+                    let end = matchToken(matcher, in: input, at: tokenStart)
+                {
                     if bestEnd == nil || end > bestEnd! { bestEnd = end }
                 }
             }
@@ -291,7 +292,8 @@ final class Predictor<Input: ParserInput> {
             for transition in atn[config.state].transitions {
                 if case .atom(let matcher, _, _, _, let target) = transition,
                     let end = matchToken(matcher, in: input, at: tokenStart),
-                    Input.text(of: input[tokenStart..<end]) == key {
+                    Input.text(of: input[tokenStart..<end]) == key
+                {
                     var busy: Set<ClosureKey> = []
                     closure(config.at(state: target, context: config.context), into: &next, busy: &busy)
                 }

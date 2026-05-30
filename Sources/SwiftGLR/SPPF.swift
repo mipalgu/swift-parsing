@@ -122,8 +122,10 @@ final class SPPF {
     ///   - production: The production producing the derivation.
     ///   - children: The ordered child nodes.
     func addFamily(to node: SPPFNode, production: Int?, children: [SPPFNode]) {
-        for family in node.families where family.production == production
-            && family.children.count == children.count {
+        for family in node.families
+        where family.production == production
+            && family.children.count == children.count
+        {
             if zip(family.children, children).allSatisfy({ $0 === $1 }) { return }
         }
         node.families.append(PackedFamily(production: production, children: children))

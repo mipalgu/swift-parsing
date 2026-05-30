@@ -105,7 +105,8 @@ struct GrammarFlattener {
         // Lower each named rule into productions for its nonterminal.
         for name in grammar.rules.keys.sorted() {
             let body = grammar.rules[name]!
-            let emit: Emit = name.hasPrefix("_")
+            let emit: Emit =
+                name.hasPrefix("_")
                 ? .transparent
                 : .opaque(SyntaxKind(name, isNamed: true))
             lower(body, into: intern(nonterminal: name), emit: emit, precedence: nil, choiceOrdinal: nil)

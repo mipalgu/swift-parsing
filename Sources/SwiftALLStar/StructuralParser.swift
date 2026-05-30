@@ -58,7 +58,8 @@ final class StructuralParser<Input: ParserInput> {
         if index != input.endIndex {
             diagnostics.append(.error("unexpected trailing input", at: .empty(at: byteOffset)))
             let junk = Input.text(of: input[index..<input.endIndex])
-            let errorToken = GreenNode.token(SyntaxKind("<error>", isNamed: false), text: junk, leadingTrivia: trailingTrivia)
+            let errorToken = GreenNode.token(
+                SyntaxKind("<error>", isNamed: false), text: junk, leadingTrivia: trailingTrivia)
             let errorNode = GreenNode.errorNode(children: [.init(node: errorToken)])
             documentNode = GreenNode.node(documentNode.kind, children: documentNode.children + [.init(node: errorNode)])
         } else if !trailingTrivia.isEmpty {

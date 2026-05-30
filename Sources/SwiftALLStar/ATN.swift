@@ -20,7 +20,9 @@ enum ATNTransition: Sendable {
     /// Consumes one logical token matching `matcher`, carrying the metadata to build its CST leaf.
     case atom(matcher: TokenMatcher, isNamed: Bool, name: String, field: String?, target: ATNStateID)
     /// Calls the submachine for `ruleName`: jumps to `callee`, returning to `follow` at its stop state.
-    case rule(callee: ATNStateID, follow: ATNStateID, ruleName: String, isHidden: Bool, isDefined: Bool, field: String?, target: ATNStateID)
+    case rule(
+        callee: ATNStateID, follow: ATNStateID, ruleName: String, isHidden: Bool, isDefined: Bool, field: String?,
+        target: ATNStateID)
     /// A free epsilon move to `target`.
     case epsilon(target: ATNStateID)
     /// A semantic-mutator move (a no-op for this engine), treated as epsilon.

@@ -110,8 +110,10 @@ struct TreeBuilder {
         // canonicalised silently.
         if candidates.contains(where: { !equivalent($0, best) }) {
             ambiguities.append(
-                (rule: tables.nonterminalNames[nt],
-                 span: SourceSpan(start: node.start, length: node.end - node.start)))
+                (
+                    rule: tables.nonterminalNames[nt],
+                    span: SourceSpan(start: node.start, length: node.end - node.start)
+                ))
         }
         return best
     }

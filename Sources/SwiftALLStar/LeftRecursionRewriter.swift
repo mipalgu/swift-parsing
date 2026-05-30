@@ -126,7 +126,8 @@ enum LeftRecursionRewriter {
     private static func recursiveSuffix(of alternative: Rule, ruleName: String) -> [Rule]? {
         let unwrapped = unwrapPrecedence(alternative)
         guard case .sequence(let rules) = unwrapped, let first = rules.first,
-            leadingReference(first) == ruleName else {
+            leadingReference(first) == ruleName
+        else {
             // A bare `A` alone is degenerate; treat a leading reference as recursive with empty suffix.
             if leadingReference(unwrapped) == ruleName { return [] }
             return nil

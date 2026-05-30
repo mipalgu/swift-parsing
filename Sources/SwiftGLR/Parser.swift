@@ -345,7 +345,8 @@ struct GLRParser<Input: ParserInput> {
         }
         for (id, production) in tables.productions.enumerated()
         where production.lhs == nt && !production.rhs.isEmpty
-            && production.rhs.allSatisfy({ tables.nullableSymbol($0) }) {
+            && production.rhs.allSatisfy({ tables.nullableSymbol($0) })
+        {
             return id
         }
         return nil
