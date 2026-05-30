@@ -62,12 +62,78 @@ struct G4Lowering {
         var rules: [String: Rule] = [:]
         for rule in parsed.rules where !rule.isLexerRule {
             guard rules[rule.name] == nil else { throw .duplicateRule(rule.name) }
-            rules[rule.name] = try lowerAlternatives(rule.alternatives)
+            rules[rule.name] = try lowerRule(rule)
         }
         return Grammar(name: parsed.name, startRule: start, rules: rules, extras: extras)
     }
 
     // MARK: - Parser-rule lowering
+
+    /// Lowers one parser rule, emitting a precedence ladder when the rule is directly left-recursive.
+    ///
+    /// A directly left-recursive rule (one whose first element, after unwrapping any label or `<assoc>`
+    /// option, refers to the rule itself) lowers to a tightest-first `.choice` of `.precedence`-wrapped
+    /// operator tiers followed by its non-recursive primaries. The convention is that a HIGHER `level`
+    /// binds tighter, matching `LuaGrammar` and `CGrammar`; the SwiftALLStar left-recursion rewriter then
+    /// performs precedence climbing. A rule with no leading self-reference lowers exactly as before.
+    private func lowerRule(_ rule: G4Rule) throws(G4ImportError) -> Rule {
+        guard isDirectlyLeftRecursive(rule) else {
+            return try lowerAlternatives(rule.alternatives)
+        }
+        return try lowerPrecedenceRule(rule)
+    }
+
+    /// Whether some alternative of `rule` begins (after unwrapping a label or `<assoc>` option) with a
+    /// reference to `rule` itself, mirroring `LeftRecursionRewriter.leadingReference` for direct recursion.
+    private func isDirectlyLeftRecursive(_ rule: G4Rule) -> Bool {
+        rule.alternatives.contains { leadsWithReference(to: rule.name, $0) }
+    }
+
+    /// Whether an alternative's first element, after unwrapping labels and `<assoc>` options, references
+    /// the given rule name.
+    private func leadsWithReference(to name: String, _ alternative: G4Alternative) -> Bool {
+        guard let first = alternative.elements.first else { return false }
+        if case .reference(name) = Self.unwrapElement(first) { return true }
+        return false
+    }
+
+    /// Strips `.labelled` and `.elementOption` wrappers to reveal the underlying element.
+    private static func unwrapElement(_ element: G4Element) -> G4Element {
+        switch element {
+        case .labelled(_, let inner), .elementOption(_, let inner): return unwrapElement(inner)
+        default: return element
+        }
+    }
+
+    /// Lowers a directly left-recursive rule into a tightest-first `.choice` of precedence tiers.
+    ///
+    /// The operator (self-recursive) alternatives are taken in source order `[alt0, ..., altK-1]`, where
+    /// ANTLR ranks `alt0` as binding tightest. With `K` operator alternatives, the alternative at source
+    /// index `i` becomes `.precedence(level: K - i, associativity: A_i, body)`, so `alt0` gets the highest
+    /// level (binds tightest) and `altK-1` the lowest. The wrapped operator tiers are listed
+    /// tightest-first, then the non-recursive primary alternatives follow unwrapped, guaranteeing the
+    /// rewriter finds a base alternative. The importer does not run the rewrite itself.
+    private func lowerPrecedenceRule(_ rule: G4Rule) throws(G4ImportError) -> Rule {
+        var operators: [G4Alternative] = []
+        var primaries: [G4Alternative] = []
+        for alternative in rule.alternatives {
+            if leadsWithReference(to: rule.name, alternative) {
+                operators.append(alternative)
+            } else {
+                primaries.append(alternative)
+            }
+        }
+        let tierCount = operators.count
+        var tiers: [Rule] = []
+        for (index, alternative) in operators.enumerated() {
+            let body = try lowerAlternative(alternative)
+            tiers.append(
+                .precedence(
+                    level: tierCount - index, associativity: alternative.declaredAssociativity, body))
+        }
+        let primaryRules = try primaries.map(lowerAlternative)
+        return .choice(tiers + primaryRules)
+    }
 
     private func lowerAlternatives(_ alternatives: [G4Alternative]) throws(G4ImportError) -> Rule {
         let lowered = try alternatives.map(lowerAlternative)
@@ -90,6 +156,9 @@ struct G4Lowering {
         case .labelled(let label, let inner):
             guard let lowered = try lowerElement(inner) else { return nil }
             return .field(label, lowered)
+        case .elementOption(_, let inner):
+            // A trailing `<assoc=...>` option is ignored by ANTLR; pass through to the inner element.
+            return try lowerElement(inner)
         case .reference(let name):
             return try lowerReference(name)
         case .stringLiteral(let value):
@@ -166,7 +235,7 @@ struct G4Lowering {
         _ element: G4Element, in table: [String: G4Rule], resolving: Set<String>
     ) throws(G4ImportError) -> TokenMatcher {
         switch element {
-        case .labelled(_, let inner):
+        case .labelled(_, let inner), .elementOption(_, let inner):
             return try resolveElement(inner, in: table, resolving: resolving)
         case .stringLiteral(let value):
             return .literal(value)

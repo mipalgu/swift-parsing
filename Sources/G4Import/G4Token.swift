@@ -1,3 +1,15 @@
+/// The associativity declared by an ANTLR `<assoc=left|right>` element option.
+///
+/// ANTLR 4 writes this option as a leading annotation on a rule alternative to mark the operator that
+/// alternative defines as left- or right-associative. This is the single authoritative definition of the
+/// two recognised values; lowering maps them to `ParsingCore`'s `Associativity`.
+enum G4OptionAssociativity: Hashable, Sendable {
+    /// `<assoc=left>`: the operator groups left-to-right (ANTLR's default).
+    case left
+    /// `<assoc=right>`: the operator groups right-to-left.
+    case right
+}
+
 /// A lexical token of ANTLR `.g4` meta-syntax.
 ///
 /// The `.g4` importer tokenises grammar text into this small, closed vocabulary before parsing it into
@@ -40,6 +52,8 @@ enum G4Token: Hashable, Sendable {
     case comma
     /// An element-label assignment operator (`=` or `+=`).
     case equals
+    /// An `<assoc=left|right>` element option, carrying the declared associativity.
+    case elementOption(G4OptionAssociativity)
     /// The end-of-input marker.
     case endOfFile
 }

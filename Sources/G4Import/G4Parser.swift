@@ -1,3 +1,5 @@
+import ParsingCore
+
 /// Parses a stream of `G4Token` values into a `G4ParsedGrammar`.
 ///
 /// The grammar accepted is the documented supported subset: a `grammar Name;` header followed by a
@@ -62,11 +64,25 @@ struct G4Parser {
     }
 
     private mutating func parseAlternative() throws(G4ImportError) -> G4Alternative {
+        let associativity = parseLeadingAssociativity()
         var elements: [G4Element] = []
         while isElementStart(peekToken()) {
             elements.append(try parseSuffixedElement())
         }
-        return G4Alternative(elements: elements)
+        return G4Alternative(elements: elements, declaredAssociativity: associativity)
+    }
+
+    /// Consumes a leading `<assoc=left|right>` alternative option, if present, returning its
+    /// associativity. In ANTLR 4 the option appears immediately after the `|` (or `:` for the first
+    /// alternative) and declares the operator alternative's associativity; an undecorated alternative is
+    /// left-associative by default.
+    private mutating func parseLeadingAssociativity() -> Associativity {
+        guard case .elementOption(let option) = peekToken() else { return .left }
+        position += 1
+        switch option {
+        case .left: return .left
+        case .right: return .right
+        }
     }
 
     private mutating func parseSuffixedElement() throws(G4ImportError) -> G4Element {
@@ -79,7 +95,18 @@ struct G4Parser {
         case .plus: position += 1; consumeNonGreedyMarker(); suffixed = .oneOrMore(element)
         default: suffixed = element
         }
-        return label.map { .labelled($0, suffixed) } ?? suffixed
+        let optioned = consumeTrailingOption(on: suffixed)
+        return label.map { .labelled($0, optioned) } ?? optioned
+    }
+
+    /// Consumes a trailing `<assoc=...>` option written on an element (for example `e '^'<assoc=right> e`)
+    /// and wraps the element so lowering can pass through to it. ANTLR accepts but ignores a trailing
+    /// option; only the leading alternative option sets associativity, so the wrapped value is discarded
+    /// during lowering rather than influencing precedence.
+    private mutating func consumeTrailingOption(on element: G4Element) -> G4Element {
+        guard case .elementOption(let option) = peekToken() else { return element }
+        position += 1
+        return .elementOption(option, element)
     }
 
     /// Recognises an element label (`name=` or `name+=`) and returns its name, leaving the cursor on the
@@ -237,6 +264,7 @@ struct G4Parser {
         case .arrow: return "'->'"
         case .comma: return "','"
         case .equals: return "'='"
+        case .elementOption(let option): return "'<assoc=\(option == .left ? "left" : "right")>'"
         case .endOfFile: return "end of input"
         }
     }

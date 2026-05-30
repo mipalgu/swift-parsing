@@ -71,7 +71,7 @@ let package = Package(
         .testTarget(name: "RecursiveDescentTests", dependencies: ["RecursiveDescent", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "GrammarImportTests", dependencies: ["GrammarImport", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
         .testTarget(name: "QueryTests", dependencies: ["Query", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
-        .testTarget(name: "G4ImportTests", dependencies: ["G4Import", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
+        .testTarget(name: "G4ImportTests", dependencies: ["G4Import", "ParsingDSL", "ParsingCore", "RecursiveDescent", "SwiftALLStar"], swiftSettings: strict),
         .testTarget(name: "EBNFImportTests", dependencies: ["EBNFImport", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
         .testTarget(name: "SwiftGLRTests", dependencies: ["SwiftGLR", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
         .testTarget(name: "SwiftALLStarTests", dependencies: ["SwiftALLStar", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),

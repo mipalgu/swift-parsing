@@ -81,6 +81,7 @@ struct G4Lexer {
         case "-" where peekAhead(1) == ">": position += 2; return .arrow
         case "'": return try lexStringLiteral()
         case "[": return try lexCharacterSet()
+        case "<": return try lexElementOption()
         default:
             if character.isLetter || character == "_" {
                 return lexIdentifier()
@@ -123,6 +124,36 @@ struct G4Lexer {
         throw .unterminatedLiteral
     }
 
+    /// Lexes an `<assoc=left|right>` element option, consuming the whole `<...>` so its inner `=` never
+    /// reaches the `=`/`+=` token rules. The body is trimmed of whitespace to match ANTLR's leniency.
+    ///
+    /// Only the single supported `assoc=left`/`assoc=right` form is recognised; any other body (for
+    /// example `<p=3>`, `<fail=...>`, or a multi-option `<a=b,c=d>` list) throws
+    /// `G4ImportError.unsupportedConstruct`, and an option that reaches end of input before its closing
+    /// `>` throws `G4ImportError.unterminatedLiteral`.
+    private mutating func lexElementOption() throws(G4ImportError) -> G4Token {
+        position += 1  // consume "<"
+        var body = ""
+        while let character = peek() {
+            if character == ">" {
+                position += 1
+                return try Self.elementOption(forBody: body)
+            }
+            body.append(character)
+            position += 1
+        }
+        throw .unterminatedLiteral
+    }
+
+    /// Maps a trimmed `<...>` body to its `G4Token`, accepting only `assoc=left`/`assoc=right`.
+    private static func elementOption(forBody body: String) throws(G4ImportError) -> G4Token {
+        switch body.filter({ !$0.isWhitespace }) {
+        case OptionKeyword.assocLeft: return .elementOption(.left)
+        case OptionKeyword.assocRight: return .elementOption(.right)
+        default: throw .unsupportedConstruct("element option '<\(body)>'")
+        }
+    }
+
     private mutating func lexCharacterSet() throws(G4ImportError) -> G4Token {
         position += 1  // consume "["
         var body = ""
@@ -160,5 +191,11 @@ struct G4Lexer {
     private enum Keyword {
         static let grammar = "grammar"
         static let fragment = "fragment"
+    }
+
+    /// The element-option bodies recognised by this importer (whitespace already stripped).
+    private enum OptionKeyword {
+        static let assocLeft = "assoc=left"
+        static let assocRight = "assoc=right"
     }
 }

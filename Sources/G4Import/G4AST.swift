@@ -1,3 +1,5 @@
+import ParsingCore
+
 /// The abstract syntax tree of a parsed ANTLR `.g4` grammar.
 ///
 /// The parser produces this faithful, surface-level tree first; lowering to the `ParsingCore` grammar
@@ -26,12 +28,21 @@ indirect enum G4Element: Hashable, Sendable {
     case oneOrMore(G4Element)
     /// An element labelled with a name (`label=element` or `label+=element`), lowered to a grammar field.
     case labelled(String, G4Element)
+    /// An element carrying a trailing `<assoc=...>` option. ANTLR ignores a trailing option, so lowering
+    /// passes through to the inner element; only the leading alternative option sets associativity.
+    case elementOption(G4OptionAssociativity, G4Element)
 }
 
 /// One alternative of a rule: an ordered sequence of elements.
 struct G4Alternative: Hashable, Sendable {
     /// The elements matched in order.
     var elements: [G4Element]
+    /// The associativity declared by a leading `<assoc=left|right>` option on this alternative.
+    ///
+    /// In ANTLR 4 the option is written immediately after the `|` (or after `:` for the first
+    /// alternative). It defaults to `.left`, matching ANTLR's default for an undecorated operator
+    /// alternative.
+    var declaredAssociativity: Associativity = .left
 }
 
 /// A lexer command attached to the end of a lexer-rule alternative (the `-> ...` clause).

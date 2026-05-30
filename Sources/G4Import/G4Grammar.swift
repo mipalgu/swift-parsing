@@ -22,12 +22,19 @@ import ParsingCore
 /// - The lexer commands `-> skip` and `-> channel(...)`, whose rules become trivia (`extras`).
 /// - The built-in `EOF` reference, which contributes no node.
 /// - `//` line comments and `/* */` block comments.
+/// - The `<assoc=left|right>` element option (leading alternative form), used to set operator
+///   associativity on directly left-recursive parser rules.
+/// - Directly left-recursive parser rules, imported as a tightest-first ladder of precedence tiers (the
+///   first-listed operator alternative binds tightest) for the ALL(*) left-recursion rewriter to execute
+///   by precedence climbing.
 ///
 /// ## Not supported
 ///
 /// Labelled alternatives (`# Label`), lexical modes, embedded actions `{...}`, semantic predicates,
 /// `options`/`tokens`/`channels` blocks, grammar imports, separate `parser grammar`/`lexer grammar`
-/// files, and rule arguments or return values. Encountering any of these raises `G4ImportError`.
+/// files, and rule arguments or return values. Indirect left recursion and every element option other
+/// than `<assoc=left|right>` (for example `<p=N>`, `<fail=...>`, or multi-option `<a=b,c=d>` lists)
+/// likewise remain unsupported. Encountering any of these raises `G4ImportError`.
 public enum G4Grammar {
     /// Imports a grammar from `.g4` source text.
     /// - Parameter text: The ANTLR `.g4` grammar text.
