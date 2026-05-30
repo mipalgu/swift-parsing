@@ -39,82 +39,40 @@ public enum LuaGrammar {
         "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
     ]
 
-    /// A node in a trie of the reserved words, keyed by character.
-    private final class KeywordTrieNode {
-        /// The child nodes, keyed by the next character.
-        var children: [Character: KeywordTrieNode] = [:]
-        /// Whether the path to this node spells a complete reserved word.
-        var isWord = false
-    }
-
-    /// Builds a trie over the reserved words.
-    private static func buildKeywordTrie() -> KeywordTrieNode {
-        let root = KeywordTrieNode()
-        for word in reservedWords {
-            var node = root
-            for character in word {
-                if let next = node.children[character] {
-                    node = next
-                } else {
-                    let next = KeywordTrieNode()
-                    node.children[character] = next
-                    node = next
-                }
-            }
-            node.isWord = true
-        }
-        return root
-    }
-
-    /// Builds the matcher for the remainder of an identifier from a trie node, excluding exact keywords.
+    /// A zero-width assertion that the current position is at a word boundary: it is not followed by a
+    /// further identifier-continuation character.
     ///
-    /// The matcher accepts any identifier suffix whose full identifier (the keyword prefix already consumed
-    /// to reach this node, plus this suffix) is not a reserved word. At each node the identifier may diverge
-    /// by consuming a continuation character that is not one of the node's keyword children (after which any
-    /// identifier tail is allowed), or follow a keyword child one character further. The empty suffix is
-    /// allowed only when the node does not itself spell a complete reserved word.
-    /// - Parameters:
-    ///   - node: The trie node reached by the keyword prefix consumed so far.
-    ///   - atStart: Whether `node` is the root (no identifier character has been consumed yet).
-    /// - Returns: A matcher for the rest of a non-keyword identifier from this node.
-    private static func nonKeywordSuffix(from node: KeywordTrieNode, atStart: Bool) -> TokenMatcher {
-        var alternatives: [TokenMatcher] = []
+    /// Sequenced after a keyword literal, this turns `if` into a keyword only when it is not immediately
+    /// followed by another identifier character, so `iffy` is read as a single identifier rather than the
+    /// keyword `if` plus `fy`.
+    private static var keywordBoundary: TokenMatcher {
+        Match.notFollowedBy(identifierContinue)
+    }
 
-        // Diverge: consume one identifier character that is not a keyword child here, then any tail. The
-        // first character must satisfy the identifier-start class; later characters the continue class. The
-        // "identifier character that is not a child" is expressed as a one-element negation of (a
-        // non-identifier element, or any child character), which the matcher supports directly.
-        let firstClass = atStart ? identifierStart : identifierContinue
-        let childKeys = node.children.keys.sorted().map { TokenMatcher.literal(String($0)) }
-        let divergingChar: TokenMatcher =
-            childKeys.isEmpty
-            ? firstClass
-            : .negated(.alternation([.negated(firstClass)] + childKeys))
-        alternatives.append(.sequence([divergingChar, .repeated(min: 0, max: nil, identifierContinue)]))
-
-        // Follow each keyword child one step further.
-        for (character, child) in node.children.sorted(by: { $0.key < $1.key }) {
-            alternatives.append(
-                .sequence([.literal(String(character)), nonKeywordSuffix(from: child, atStart: false)]))
-        }
-
-        // Stopping here is a valid identifier only when this node is not itself a whole keyword and at least
-        // the start character has been consumed (an empty identifier is not valid).
-        if !node.isWord && !atStart {
-            alternatives.append(.sequence([]))
-        }
-
-        return alternatives.count == 1 ? alternatives[0] : .alternation(alternatives)
+    /// A matcher that matches exactly one reserved word standing at a word boundary.
+    ///
+    /// It is the alternation of every reserved word, each followed by the ``keywordBoundary`` assertion, so
+    /// it matches `and`, `break`, … only when the word is complete (not merely a prefix of a longer
+    /// identifier such as `andy`). It is used as a negative lookahead in front of the identifier matcher to
+    /// forbid an identifier that *is* a whole keyword while still admitting identifiers that contain or
+    /// border one.
+    private static var anyKeywordAtBoundary: TokenMatcher {
+        .alternation(reservedWords.map { Match.seq(Match.lit($0), keywordBoundary) })
     }
 
     /// A matcher for a Lua identifier (`Name`): a letter or underscore then letters, digits, or underscores,
     /// excluding the reserved words.
     ///
-    /// Keywords are matched as literals in the structural positions that require them; excluding them here
-    /// keeps a keyword from ever being parsed as an identifier, which the lookahead and exploratory engines
-    /// require to parse block boundaries unambiguously.
+    /// A leading negative lookahead rejects an identifier that is exactly a reserved word standing at a word
+    /// boundary, so a keyword is never parsed as an identifier (which the lookahead and exploratory engines
+    /// require to parse block boundaries unambiguously), while identifiers that merely contain, begin with,
+    /// or end with a keyword (such as `ending`, `andy`, `_end`, or `iffy`) are still admitted. The keyword
+    /// is matched as a literal in the structural positions that require it.
     private static var nameMatcher: TokenMatcher {
-        nonKeywordSuffix(from: buildKeywordTrie(), atStart: true)
+        Match.seq(
+            Match.notFollowedBy(anyKeywordAtBoundary),
+            identifierStart,
+            Match.zeroOrMore(identifierContinue))
     }
 
     /// A matcher for a run of one or more ASCII decimal digits.
