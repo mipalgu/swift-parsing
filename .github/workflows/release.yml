@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+env:
+  SWIFT_SDK_VERSION: "6.3.2"
+
+jobs:
+  macos:
+    name: macOS universal binary
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal binary
+        run: |
+          swift build -c release --arch arm64 --arch x86_64 --product swift-parsing
+          BIN=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
+          cp "$BIN/swift-parsing" swift-parsing-macos
+      - name: Package
+        run: |
+          tar -czf swift-parsing-macos-universal.tar.gz swift-parsing-macos
+          shasum -a 256 swift-parsing-macos-universal.tar.gz > swift-parsing-macos-universal.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: swift-parsing-macos-universal.tar.gz*
+
+  linux-musl:
+    name: Static Linux ${{ matrix.triple }}
+    runs-on: ubuntu-24.04
+    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    strategy:
+      matrix:
+        triple: [x86_64-swift-linux-musl, aarch64-swift-linux-musl]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Static Linux SDK
+        run: |
+          swift sdk install \
+            "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/static-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz" \
+            --checksum 3fd798bef6f4408f1ea5a6f94ce4d4052830c4326ab85ebc04f983f01b3da407
+      - name: Build static binary
+        run: |
+          swift build -c release --swift-sdk ${{ matrix.triple }} --product swift-parsing
+          BIN=$(swift build -c release --swift-sdk ${{ matrix.triple }} --show-bin-path)
+          cp "$BIN/swift-parsing" swift-parsing-${{ matrix.triple }}
+      - name: Package
+        run: |
+          tar -czf swift-parsing-${{ matrix.triple }}.tar.gz swift-parsing-${{ matrix.triple }}
+          sha256sum swift-parsing-${{ matrix.triple }}.tar.gz > swift-parsing-${{ matrix.triple }}.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.triple }}
+          path: swift-parsing-${{ matrix.triple }}.tar.gz*
+
+  windows:
+    name: Windows binary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@v0.3.0
+        with:
+          branch: swift-6.2-release
+          tag: 6.2-RELEASE
+      - name: Build
+        run: swift build -c release --product swift-parsing
+      - name: Package
+        shell: pwsh
+        run: |
+          $bin = swift build -c release --show-bin-path
+          Copy-Item "$bin/swift-parsing.exe" swift-parsing.exe
+          Compress-Archive -Path swift-parsing.exe -DestinationPath swift-parsing-windows-x86_64.zip
+          (Get-FileHash swift-parsing-windows-x86_64.zip -Algorithm SHA256).Hash > swift-parsing-windows-x86_64.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: swift-parsing-windows-x86_64.zip*
+
+  wasm:
+    name: WebAssembly module
+    runs-on: ubuntu-24.04
+    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install WebAssembly SDK
+        run: |
+          swift sdk install \
+            "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/wasm-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_wasm.artifactbundle.tar.gz" \
+            --checksum a61f0584c93283589f8b2f42db05c1f9a182b506c2957271402992655591dd7c
+      - name: Build WebAssembly module
+        run: |
+          swift build -c release --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" --product swift-parsing
+          BIN=$(swift build -c release --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" --show-bin-path)
+          cp "$BIN/swift-parsing.wasm" swift-parsing.wasm
+      - name: Package
+        run: |
+          gzip -c swift-parsing.wasm > swift-parsing-wasm.wasm.gz
+          sha256sum swift-parsing-wasm.wasm.gz > swift-parsing-wasm.wasm.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: swift-parsing-wasm.wasm.gz*
+
+  release:
+    name: Publish release
+    needs: [macos, linux-musl, windows, wasm]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

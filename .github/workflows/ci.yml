@@ -6,9 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Cross-compilation SDKs are version-locked to the toolchain that produced them. Keep these in step
+  # with the Swift release used by the WASM, musl and embedded jobs.
+  SWIFT_SDK_VERSION: "6.3.2"
+
 jobs:
   macos:
-    name: macOS (build, test, coverage gate)
+    name: macOS (test, coverage)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -17,20 +26,32 @@ jobs:
       - name: Test with coverage
         run: swift test --enable-code-coverage
       - name: Enforce coverage of reachable code
-        # All reachable code is covered; the only permitted gaps are `precondition`
-        # failure paths (process traps), which cannot be exercised without aborting.
+        # All reachable code is covered; the only permitted gaps are `precondition` failure paths
+        # (process traps), which cannot be exercised without aborting.
         run: |
           BIN=$(swift build --show-bin-path)
           XCTEST=$(find "$BIN" -name '*.xctest' -type d | head -1)
           EXEC="$XCTEST/Contents/MacOS/$(basename "$XCTEST" .xctest)"
           PROF=$(find "$BIN" -name 'default.profdata' | head -1)
+          xcrun llvm-cov export "$EXEC" -instr-profile "$PROF" \
+            -ignore-filename-regex='Tests|\.build' -format lcov > coverage.lcov
           xcrun llvm-cov report "$EXEC" -instr-profile "$PROF" \
             -ignore-filename-regex='Tests|\.build' --show-functions=false
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.lcov
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   linux:
-    name: Linux (build, test)
+    name: Linux (test)
     runs-on: ubuntu-24.04
-    container: swift:6.2-noble
+    # Swift 6.3.2, not the 6.2 baseline: swift-corelibs-foundation in 6.2 fails to copy the
+    # tree-sitter-json `queries` directory resource (NSCocoaError 512), which 6.3.x fixes. The
+    # package itself still targets the 6.2 tools-version.
+    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -38,10 +59,138 @@ jobs:
       - name: Test
         run: swift test --parallel
 
-  lint:
-    name: swift-format lint
+  ios:
+    name: iOS Simulator (test)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Test on iOS Simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available 'iPhone' | grep -Eo 'iPhone [0-9]+' | tail -1)
+          xcodebuild test \
+            -scheme SwiftParsing-Package \
+            -destination "platform=iOS Simulator,name=${DEVICE:-iPhone 16}" \
+            -enableCodeCoverage YES \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify || \
+          xcodebuild test \
+            -scheme SwiftParsing-Package \
+            -destination "platform=iOS Simulator,name=${DEVICE:-iPhone 16}" \
+            -enableCodeCoverage YES \
+            CODE_SIGNING_ALLOWED=NO
+
+  windows:
+    name: Windows (test)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@v0.3.0
+        with:
+          branch: swift-6.2-release
+          tag: 6.2-RELEASE
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
+
+  wasm:
+    name: WebAssembly (build + WasmKit tests)
+    runs-on: ubuntu-24.04
+    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install WebAssembly SDK
+        run: |
+          swift sdk install \
+            "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/wasm-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_wasm.artifactbundle.tar.gz" \
+            --checksum a61f0584c93283589f8b2f42db05c1f9a182b506c2957271402992655591dd7c
+      - name: Build tests for WebAssembly
+        # The pure-Swift targets only; the C-backed tree-sitter backend does not target WASM.
+        run: |
+          swift build --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm" --build-tests \
+            --target ParsingCoreTests --target ParsingTests --target ParsingDSLTests \
+            --target RecursiveDescentTests --target GrammarImportTests
+      - name: Run tests under WasmKit
+        run: |
+          WASM=$(find .build -name '*PackageTests.wasm' | head -1)
+          wasmkit run --dir . "$WASM" --testing-library swift-testing
+
+  musl:
+    name: Static Linux musl (build + run)
+    runs-on: ubuntu-24.04
+    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Static Linux SDK
+        run: |
+          swift sdk install \
+            "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/static-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz" \
+            --checksum 3fd798bef6f4408f1ea5a6f94ce4d4052830c4326ab85ebc04f983f01b3da407
+      - name: Build static test binary
+        run: swift build --swift-sdk x86_64-swift-linux-musl --build-tests
+      - name: Run static test binary
+        run: |
+          BIN=$(swift build --swift-sdk x86_64-swift-linux-musl --show-bin-path)
+          RUNNER=$(find "$BIN" -name '*PackageTests.xctest' -o -name '*.test' | head -1)
+          "${RUNNER:-$BIN/SwiftParsingPackageTests.xctest}"
+
+  embedded:
+    name: Embedded compile gate
+    runs-on: ubuntu-24.04
+    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Embedded WebAssembly SDK
+        run: |
+          swift sdk install \
+            "https://download.swift.org/swift-${SWIFT_SDK_VERSION}-release/wasm-sdk/swift-${SWIFT_SDK_VERSION}-RELEASE/swift-${SWIFT_SDK_VERSION}-RELEASE_wasm.artifactbundle.tar.gz" \
+            --checksum a61f0584c93283589f8b2f42db05c1f9a182b506c2957271402992655591dd7c
+      - name: Compile ParsingCore for Embedded Swift
+        # The embedded-safe core must compile under the Embedded Swift subset. The host build already
+        # enforces the EmbeddedRestrictions diagnostic; this proves it links for a real embedded target.
+        run: swift build --swift-sdk "swift-${SWIFT_SDK_VERSION}-RELEASE_wasm-embedded" --product ParsingCore
+
+  lint:
+    name: swift-format lint
+    runs-on: ubuntu-24.04
+    # Pinned to a fixed toolchain so the swift-format version (and therefore its rule set) is
+    # reproducible, rather than tracking whatever the macOS runner's Xcode ships.
+    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    steps:
+      - uses: actions/checkout@v4
       - name: Lint
-        run: swift format lint --strict --recursive Sources
+        # The .docc tutorial code listings are illustrative snippets, not API, so they are excluded.
+        run: |
+          find Sources -name '*.swift' -not -path '*/*.docc/*' -print0 \
+            | xargs -0 swift format lint --strict
+
+  docs:
+    name: Documentation quality gate
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build documentation with warnings as errors
+        # The doc plugins are gated behind DOCUMENTATION so normal builds skip their heavy graph.
+        # Restricting to the library targets keeps the build warning-clean (the executable's
+        # synthesised page and the C dependency's docs are not part of the public API surface).
+        env:
+          DOCUMENTATION: "1"
+        run: |
+          DOCUMENTATION=1 swift package --allow-writing-to-directory ./docs-ci \
+            generate-documentation --enable-experimental-combined-documentation \
+            --warnings-as-errors --output-path ./docs-ci \
+            --target ParsingCore --target Parsing --target ParsingDSL \
+            --target GrammarImport --target RecursiveDescent --target TreeSitterBackend
+
+  benchmark:
+    name: Benchmarks
+    runs-on: ubuntu-24.04
+    container: swift:${{ env.SWIFT_SDK_VERSION }}-noble
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jemalloc
+        run: apt-get update && apt-get install -y libjemalloc-dev
+      - name: Run benchmarks
+        env:
+          BENCHMARK: "1"
+        run: BENCHMARK=1 swift package benchmark --no-progress

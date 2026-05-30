@@ -1,0 +1,50 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow this workflow to publish to GitHub Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only the most recent docs deployment matters; cancel superseded runs.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build static documentation
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate static documentation
+        # The mipalgu swift-docc-static plugin merges every library target into one static site.
+        # No per-target flags are passed: the docc-static merge step fails to assemble the root
+        # index when targets are listed individually, whereas the all-targets path produces a
+        # complete site with a root index and client-side search.
+        env:
+          DOCUMENTATION: "1"
+        run: |
+          DOCUMENTATION=1 swift package --allow-writing-to-directory ./site \
+            generate-static-documentation --output ./site
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
