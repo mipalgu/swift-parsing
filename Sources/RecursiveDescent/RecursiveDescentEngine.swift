@@ -154,6 +154,7 @@ private final class Parser<Input: ParserInput> {
 
         case .sequence(let rules):
             var kids: [GreenChild] = []
+            kids.reserveCapacity(rules.count)
             for r in rules { kids += try parse(r) }
             return kids
 

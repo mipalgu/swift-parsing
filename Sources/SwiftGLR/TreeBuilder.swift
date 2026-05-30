@@ -47,6 +47,7 @@ struct TreeBuilder {
         if disambiguating { active.insert(ObjectIdentifier(root)) }
         defer { if disambiguating { active.remove(ObjectIdentifier(root)) } }
         var kids: [GreenChild] = []
+        kids.reserveCapacity(family.children.count)
         for child in family.children { emit(child, into: &kids) }
         return kids
     }
