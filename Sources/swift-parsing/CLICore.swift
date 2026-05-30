@@ -2,6 +2,8 @@ import GrammarImport
 import ParsingCore
 import ParsingDSL
 import RecursiveDescent
+import SwiftALLStar
+import SwiftGLR
 
 /// Engine-agnostic command logic for the `swift-parsing` CLI, factored out of the argument-parsing
 /// layer so it can be unit-tested without spawning a process.
@@ -27,6 +29,12 @@ enum CLICore {
         (UTF8Parser.identifier, { try UTF8Parser(grammar: $0) }),
         (ScalarParser.identifier, { try ScalarParser(grammar: $0) }),
         (GraphemeParser.identifier, { try GraphemeParser(grammar: $0) }),
+        (UTF8GLRParser.identifier, { try UTF8GLRParser(grammar: $0) }),
+        (ScalarGLRParser.identifier, { try ScalarGLRParser(grammar: $0) }),
+        (GraphemeGLRParser.identifier, { try GraphemeGLRParser(grammar: $0) }),
+        (ALLStarUTF8Parser.identifier, { try ALLStarUTF8Parser(grammar: $0) }),
+        (ALLStarScalarParser.identifier, { try ALLStarScalarParser(grammar: $0) }),
+        (ALLStarGraphemeParser.identifier, { try ALLStarGraphemeParser(grammar: $0) }),
     ]
 
     /// The identifier of the default engine (UTF-8, the fastest granularity).
