@@ -34,6 +34,9 @@ let package = Package(
         .library(name: "ParsingDSL", targets: ["ParsingDSL"]),
         .library(name: "RecursiveDescent", targets: ["RecursiveDescent"]),
         .library(name: "GrammarImport", targets: ["GrammarImport"]),
+        .library(name: "Query", targets: ["Query"]),
+        .library(name: "G4Import", targets: ["G4Import"]),
+        .library(name: "EBNFImport", targets: ["EBNFImport"]),
         .executable(name: "swift-parsing", targets: ["swift-parsing"]),
     ],
     dependencies: [
@@ -45,6 +48,14 @@ let package = Package(
         .target(name: "ParsingDSL", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "RecursiveDescent", dependencies: ["ParsingCore"], swiftSettings: strict),
         .target(name: "GrammarImport", dependencies: ["ParsingCore", "Parsing"], swiftSettings: strict),
+        .target(name: "Query", dependencies: ["ParsingCore"], swiftSettings: strict),
+        .target(
+            name: "G4Import",
+            dependencies: ["ParsingCore", "Parsing"],
+            resources: [.process("Resources")],
+            swiftSettings: strict
+        ),
+        .target(name: "EBNFImport", dependencies: ["ParsingCore"], swiftSettings: strict),
         .executableTarget(
             name: "swift-parsing",
             dependencies: [
@@ -59,6 +70,9 @@ let package = Package(
         .testTarget(name: "ParsingDSLTests", dependencies: ["ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "RecursiveDescentTests", dependencies: ["RecursiveDescent", "ParsingDSL", "ParsingCore"], swiftSettings: strict),
         .testTarget(name: "GrammarImportTests", dependencies: ["GrammarImport", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
+        .testTarget(name: "QueryTests", dependencies: ["Query", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
+        .testTarget(name: "G4ImportTests", dependencies: ["G4Import", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
+        .testTarget(name: "EBNFImportTests", dependencies: ["EBNFImport", "ParsingDSL", "ParsingCore", "RecursiveDescent"], swiftSettings: strict),
     ]
 )
 
