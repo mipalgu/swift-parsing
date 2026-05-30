@@ -83,6 +83,80 @@ struct ValidJSONTests {
     }
 }
 
+@Suite("Lookahead zero-width matching")
+struct LookaheadMatchingTests {
+    /// Builds a single-token grammar whose start rule `s` is a named token matching `matcher`, with no
+    /// trivia, so the parsed token text is exactly what the matcher consumed.
+    private func tokenGrammar(_ matcher: TokenMatcher) -> Grammar {
+        Grammar(
+            name: "g", startRule: "s",
+            rules: ["s": .token(name: "s", matcher: matcher, isNamed: true)],
+            extras: [])
+    }
+
+    @Test("Negative lookahead is zero-width: notFollowedBy(X) then Y matches Y at the same position")
+    func negativeZeroWidth() throws {
+        // `notFollowedBy("x")` asserts the next element is not 'x' and consumes nothing, then 'y' is
+        // consumed; so the whole token is just "y".
+        let matcher = Match.seq(Match.notFollowedBy(Match.lit("x")), Match.lit("y"))
+        let parser = try UTF8Parser(grammar: tokenGrammar(matcher))
+        let ok = parser.parse(Source("y"))
+        #expect(!ok.hasErrors)
+        #expect(ok.sExpression() == "(s (s))")
+        #expect(ok.tree.green.reconstructedText == "y")
+        // The assertion fires: "xy" begins with 'x', so notFollowedBy("x") fails the token.
+        #expect(parser.parse(Source("xy")).hasErrors)
+    }
+
+    @Test("Positive lookahead is zero-width: followedBy(X) then X consumes only one X")
+    func positiveZeroWidth() throws {
+        // `followedBy("y")` asserts 'y' is next and consumes nothing, then a single 'y' is consumed.
+        let matcher = Match.seq(Match.followedBy(Match.lit("y")), Match.lit("y"))
+        let parser = try UTF8Parser(grammar: tokenGrammar(matcher))
+        let ok = parser.parse(Source("y"))
+        #expect(!ok.hasErrors)
+        #expect(ok.tree.green.reconstructedText == "y")
+        // The positive assertion fails when 'y' is not next.
+        #expect(parser.parse(Source("z")).hasErrors)
+    }
+
+    @Test("Negative lookahead succeeds at end of input (nothing follows)")
+    func negativeAtEndOfInput() throws {
+        // After consuming "a", notFollowedBy(letter) holds at end of input, so "a" matches but "ab" does not.
+        let matcher = Match.seq(Match.lit("a"), Match.notFollowedBy(Match.letter))
+        let parser = try UTF8Parser(grammar: tokenGrammar(matcher))
+        let atEnd = parser.parse(Source("a"))
+        #expect(!atEnd.hasErrors)
+        #expect(atEnd.tree.green.reconstructedText == "a")
+        #expect(parser.parse(Source("ab")).hasErrors)
+    }
+
+    @Test("Positive lookahead fails at end of input (nothing follows)")
+    func positiveAtEndOfInput() throws {
+        // followedBy(any) cannot hold at end of input, so "a" alone fails but "ab" lets "a" match.
+        let matcher = Match.seq(Match.lit("a"), Match.followedBy(Match.any))
+        let parser = try UTF8Parser(grammar: tokenGrammar(matcher))
+        #expect(parser.parse(Source("a")).hasErrors)
+        let followed = parser.parse(Source("ab"))
+        // "a" is consumed (the positive lookahead saw the following "b" without consuming it); "b"
+        // remains as trailing junk, so the token "s" still matched and the parse is lossless.
+        #expect(followed.sExpression().hasPrefix("(s (s)"))
+        #expect(followed.tree.green.reconstructedText == "ab")
+    }
+
+    @Test("Nested lookahead: a positive lookahead guarding a negative lookahead is zero-width")
+    func nestedLookahead() throws {
+        // followedBy( "a" then notFollowedBy(digit) ) is zero-width, then "a" is consumed: matches "a"
+        // and "ax" but not "a1" (the inner negative assertion rejects a following digit).
+        let inner = Match.seq(Match.lit("a"), Match.notFollowedBy(Match.digit))
+        let matcher = Match.seq(Match.followedBy(inner), Match.lit("a"))
+        let parser = try UTF8Parser(grammar: tokenGrammar(matcher))
+        #expect(!parser.parse(Source("a")).hasErrors)
+        #expect(parser.parse(Source("a")).tree.green.reconstructedText == "a")
+        #expect(parser.parse(Source("a1")).hasErrors)
+    }
+}
+
 @Suite("Input granularity")
 struct GranularityTests {
     /// The same JSON produces the same tree at every granularity (UTF-8, scalar, grapheme), including
