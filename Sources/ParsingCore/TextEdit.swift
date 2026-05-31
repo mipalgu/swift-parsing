@@ -57,7 +57,7 @@ public struct TextEdit: Hashable, Sendable {
     public static func damagedSpan(of edits: [TextEdit]) -> Range<Int>? {
         guard let first = edits.min(by: { $0.startByte < $1.startByte }) else { return nil }
         let start = first.startByte
-        let end = edits.map(\.newEndByte).max() ?? start
+        let end = edits.map { $0.newEndByte }.max() ?? start
         return start..<max(start, end)
     }
 }
