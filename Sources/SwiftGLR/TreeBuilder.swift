@@ -23,14 +23,28 @@ struct TreeBuilder {
     /// When the forest is a plain tree no family is ever rejected for cyclicity and no node carries
     /// alternatives, so the recursion-path bookkeeping in ``active`` serves no purpose and is skipped.
     private let disambiguating: Bool
+    /// The previous parse's subtree pool when reparsing, or `nil` for a fresh parse.
+    ///
+    /// When present, every leaf and internal node the builder constructs is offered to the pool, which
+    /// returns the structurally identical previous node when one exists, so unchanged subtrees keep their
+    /// identity and are not re-allocated. A `nil` pool makes ``reused(_:)`` an identity function, so a fresh
+    /// parse pays nothing for the feature.
+    private let reusePool: ReusePool?
 
     /// Creates a tree builder bound to the parse tables.
     /// - Parameters:
     ///   - tables: The immutable parse tables.
     ///   - disambiguating: Whether the forest packs any ambiguity needing cycle-aware disambiguation.
-    init(tables: GLRTables, disambiguating: Bool = true) {
+    ///   - reusePool: The previous parse's subtree pool for incremental reparsing, or `nil` for a fresh parse.
+    init(tables: GLRTables, disambiguating: Bool = true, reusePool: ReusePool? = nil) {
         self.tables = tables
         self.disambiguating = disambiguating
+        self.reusePool = reusePool
+    }
+
+    /// Returns the previous parse's equivalent of a freshly built node when reparsing, else the node itself.
+    private func reused(_ node: GreenNode) -> GreenNode {
+        reusePool?.reuse(node) ?? node
     }
 
     /// Builds the children of the start-symbol root, ignoring its own opaque wrapper.
@@ -78,7 +92,7 @@ struct TreeBuilder {
             let token = GreenNode.token(
                 SyntaxKind(term.kindName, isNamed: term.isNamed),
                 text: leaf.text, leadingTrivia: leaf.leadingTrivia)
-            out.append(GreenChild(node: token))
+            out.append(GreenChild(node: reused(token)))
 
         case .epsilon:
             return
@@ -106,13 +120,13 @@ struct TreeBuilder {
                     out.append(GreenChild(field: name, node: kids[0].node))
                 } else {
                     let group = GreenNode.node(SyntaxKind("group", isNamed: false), children: kids)
-                    out.append(GreenChild(field: name, node: group))
+                    out.append(GreenChild(field: name, node: reused(group)))
                 }
             case .opaque(let kind):
                 var kids: [GreenChild] = []
                 kids.reserveCapacity(family.children.count)
                 for child in family.children { emit(child, into: &kids) }
-                out.append(GreenChild(node: GreenNode.node(kind, children: kids)))
+                out.append(GreenChild(node: reused(GreenNode.node(kind, children: kids))))
             }
         }
     }

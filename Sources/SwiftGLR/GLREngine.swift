@@ -14,8 +14,11 @@ import ParsingCore
 /// Instantiate it per granularity as ``UTF8GLRParser`` (fastest, the default), ``ScalarGLRParser``
 /// (code points), or ``GraphemeGLRParser`` (extended grapheme clusters).
 public struct GLREngine<Input: ParserInput>: ParserEngine {
-    /// The capabilities this engine guarantees: lossless trees, error recovery, and ambiguity handling.
-    public static var capabilities: EngineCapabilities { [.lossless, .errorRecovering, .ambiguous] }
+    /// The capabilities this engine guarantees: lossless trees, error recovery, ambiguity handling, and
+    /// incremental reparsing (unchanged subtrees are reused across edits).
+    public static var capabilities: EngineCapabilities {
+        [.lossless, .errorRecovering, .ambiguous, .incremental]
+    }
     /// The stable identifier under which this engine is registered, suffixed with the input granularity.
     public static var identifier: String { "glr-\(Input.granularityName)" }
 
@@ -39,12 +42,33 @@ public struct GLREngine<Input: ParserInput>: ParserEngine {
     /// - Parameter source: The source to parse.
     /// - Returns: A `ParseResult` whose tree is always complete, even for malformed input.
     public func parse(_ source: Source) -> ParseResult {
+        parse(source, reusing: nil)
+    }
+
+    /// Reparses an edited source, reusing the unchanged subtrees of a previous parse.
+    ///
+    /// The tree is byte-for-byte what a full ``parse(_:)`` of `source` would produce; the gain is that every
+    /// subtree the edits leave unchanged is taken from `previous` by identity rather than re-allocated, via
+    /// the tree builder's reuse pool. An empty edit list over an unchanged source returns `previous` directly.
+    ///
+    /// - Parameters:
+    ///   - source: The edited source to parse.
+    ///   - edits: The edits that produced `source` from the previous source (used to short-circuit a no-op).
+    ///   - previous: The previous parse result whose subtrees are candidates for reuse.
+    /// - Returns: A complete `ParseResult` for `source`.
+    public func reparse(_ source: Source, edits: [TextEdit], previous: ParseResult) -> ParseResult {
+        if edits.isEmpty && source.text == previous.source.text { return previous }
+        return parse(source, reusing: ReusePool(previous: previous.tree.green))
+    }
+
+    /// Parses a source, optionally reusing a previous parse's subtrees through `pool`.
+    private func parse(_ source: Source, reusing pool: ReusePool?) -> ParseResult {
         let input = Input.make(from: source.text)
         let sppf = SPPF()
         let parser = GLRParser<Input>(tables: tables, input: input)
         let outcome = parser.run(sppf: sppf)
 
-        var builder = TreeBuilder(tables: tables, disambiguating: sppf.hasPacking)
+        var builder = TreeBuilder(tables: tables, disambiguating: sppf.hasPacking, reusePool: pool)
         var diagnostics: [Diagnostic] = []
         let documentKind = SyntaxKind(startRuleName, isNamed: true)
 

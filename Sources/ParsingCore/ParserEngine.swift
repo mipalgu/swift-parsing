@@ -80,4 +80,27 @@ public protocol ParserEngine: Sendable {
     /// - Parameter source: The source to parse.
     /// - Returns: A ``ParseResult`` whose tree is always complete, even for malformed input.
     func parse(_ source: Source) -> ParseResult
+
+    /// Reparses an edited source, reusing the previous parse where the edits leave it unchanged.
+    ///
+    /// The result is always identical to a full ``parse(_:)`` of `source`; an engine that declares
+    /// ``EngineCapabilities/incremental`` additionally reuses unchanged subtrees of `previous` so the work
+    /// (and the surviving node identities) scale with the size of the edit rather than the whole input.
+    /// Engines that do not support incremental reparsing inherit the default, which is a full parse.
+    ///
+    /// - Parameters:
+    ///   - source: The edited source to parse.
+    ///   - edits: The edits that transformed the previous source into `source`, in any order.
+    ///   - previous: The parse result of the source before the edits.
+    /// - Returns: A ``ParseResult`` for `source`, structurally identical to a full parse of it.
+    func reparse(_ source: Source, edits: [TextEdit], previous: ParseResult) -> ParseResult
+}
+
+extension ParserEngine {
+    /// A full parse, ignoring the previous result. Engines supporting ``EngineCapabilities/incremental``
+    /// override this to reuse unchanged subtrees; every other engine inherits this correct, non-incremental
+    /// default so the API is uniform across backends.
+    public func reparse(_ source: Source, edits: [TextEdit], previous: ParseResult) -> ParseResult {
+        parse(source)
+    }
 }

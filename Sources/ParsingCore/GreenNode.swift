@@ -130,6 +130,36 @@ public final class GreenNode: Sendable {
         return false
     }
 
+    /// Whether this node and another denote structurally identical subtrees.
+    ///
+    /// Two green nodes are equivalent when they have the same kind, missing flag and payload: identical
+    /// token text and trivia for leaves, or the same ordered children (matched by field and recursively
+    /// equivalent) for internal nodes. Because green nodes are immutable and position-independent,
+    /// substituting one equivalent node for another leaves the reconstructed text and tree shape unchanged,
+    /// which is what makes incremental subtree reuse sound. Reference-identical nodes short-circuit to
+    /// `true`, so comparing a shared subtree against itself is constant time.
+    ///
+    /// - Parameter other: The node to compare against.
+    /// - Returns: `true` if the two subtrees are structurally identical.
+    public func isEquivalent(to other: GreenNode) -> Bool {
+        if self === other { return true }
+        guard kind == other.kind, isMissing == other.isMissing, byteWidth == other.byteWidth else {
+            return false
+        }
+        switch (payload, other.payload) {
+        case (.token(let text, let lead, let trail), .token(let otherText, let otherLead, let otherTrail)):
+            return text == otherText && lead == otherLead && trail == otherTrail
+        case (.node(let children), .node(let otherChildren)):
+            guard children.count == otherChildren.count else { return false }
+            for (lhs, rhs) in zip(children, otherChildren) {
+                guard lhs.field == rhs.field, lhs.node.isEquivalent(to: rhs.node) else { return false }
+            }
+            return true
+        default:
+            return false
+        }
+    }
+
     /// The exact source text this subtree was built from, including all trivia.
     ///
     /// Concatenating leading trivia, content and trailing trivia for every token in order
