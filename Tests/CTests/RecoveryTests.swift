@@ -37,23 +37,25 @@ struct CRecoveryTests {
     }
 
     @Test(
-        "All three engines agree that the input is malformed",
+        "All three engines recover malformed input, ALL(*) byte-identically to the reference",
         arguments: ["int x =", "int f(void) {", "@@@", "int = 1;"])
-    func threeEngineErrorAgreement(_ input: String) throws {
+    func threeEngineRecoveryAgreement(_ input: String) throws {
         let grammar = CGrammar.translationUnit()
         let rd = try UTF8Parser(grammar: grammar).parse(Source(input))
         let glr = try UTF8GLRParser(grammar: grammar).parse(Source(input))
         let allstar = try ALLStarUTF8Parser(grammar: grammar).parse(Source(input))
 
-        // Every engine flags the error. The two lossless engines (recursive descent and GLR) also round-trip
-        // the consumed text; the ALL(*) engine's recovery is not byte-lossless on malformed input, so only
-        // its error flag is asserted here (the byte-identical contract holds for well-formed input, proven by
-        // the differential suite).
+        // Every engine flags the error and round-trips the input losslessly. ALL(*) recovery additionally
+        // reconstructs the reference engine's longest-valid-prefix tree exactly, so it joins the differential
+        // contract on malformed input as it already does on well-formed input. GLR recovers losslessly but
+        // along its own forest, so only its error flag and round-trip are pinned here.
         #expect(rd.hasErrors)
         #expect(glr.hasErrors == rd.hasErrors, "GLR error flag for: \(input.debugDescription)")
         #expect(allstar.hasErrors == rd.hasErrors, "ALL(*) error flag for: \(input.debugDescription)")
+        #expect(allstar.sExpression() == rd.sExpression(), "ALL(*) vs RD on: \(input.debugDescription)")
         #expect(rd.tree.green.reconstructedText == input)
         #expect(glr.tree.green.reconstructedText == input)
+        #expect(allstar.tree.green.reconstructedText == input, "ALL(*) round-trip for: \(input.debugDescription)")
     }
 
     @Test("A valid prefix followed by garbage round-trips the whole input")

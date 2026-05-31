@@ -52,12 +52,28 @@ final class StructuralParser<Input: ParserInput> {
     /// Parses the start rule, recovering into `ERROR`/`MISSING` nodes and a complete document tree.
     func parseDocument() -> GreenNode {
         let startKind = SyntaxKind(grammar.startRule, isNamed: true)
+        let recoveryStart = index
+        let recoveryOffset = byteOffset
         var documentNode: GreenNode
         if grammar.rules[grammar.startRule] != nil, let node = parseReference(grammar.startRule) {
             documentNode = node
         } else {
-            diagnostics.append(.error("expected \(grammar.startRule)", at: .empty(at: byteOffset)))
-            documentNode = GreenNode.node(startKind, children: [.init(node: .missingToken(SyntaxKind("value")))])
+            // The prediction-driven walk over-committed on this malformed input and could not complete the
+            // start rule. Re-parse from the same starting cursor with ordered-choice backtracking over the
+            // grammar IR (``recoverReference``); that reconstructs the reference engine's longest-valid-prefix
+            // recovery exactly and never strands consumed input, so the tree round-trips and joins the
+            // differential contract on malformed input as it already does on well-formed input.
+            index = recoveryStart
+            byteOffset = recoveryOffset
+            if grammar.rules[grammar.startRule] != nil, let node = recoverReference(grammar.startRule) {
+                documentNode = node
+            } else {
+                index = recoveryStart
+                byteOffset = recoveryOffset
+                diagnostics.append(.error("expected \(grammar.startRule)", at: .empty(at: byteOffset)))
+                documentNode = GreenNode.node(
+                    startKind, children: [.init(node: .missingToken(SyntaxKind("value")))])
+            }
         }
 
         let trailingTrivia = consumeTriviaText()
@@ -73,6 +89,106 @@ final class StructuralParser<Input: ParserInput> {
             documentNode = GreenNode.node(documentNode.kind, children: documentNode.children + [.init(node: carrier)])
         }
         return documentNode
+    }
+
+    // MARK: - Ordered-choice recovery
+
+    /// Re-parses a rule by ordered-choice backtracking over the grammar IR, returning its node.
+    ///
+    /// This is the recovery counterpart to the prediction-driven walk. Adaptive prediction is exact on
+    /// well-formed input, but on malformed input it can commit to an alternative that then fails to consume.
+    /// Rather than strand the consumed text, the engine restores the cursor and walks the same intermediate
+    /// representation the recursive-descent reference engine walks, with the same ordered-choice
+    /// backtracking, so the recovered tree is byte-for-byte the reference engine's. Hidden rules splice and
+    /// the start kind wraps exactly as in ``parseReference``.
+    private func recoverReference(_ name: String) -> GreenNode? {
+        guard let body = grammar.rules[name], let kids = recover(body) else { return nil }
+        if name.hasPrefix("_") {
+            if kids.count == 1 { return kids[0].node }
+            return GreenNode.node(SyntaxKind("_group", isNamed: false), children: kids)
+        }
+        return GreenNode.node(SyntaxKind(name, isNamed: true), children: kids)
+    }
+
+    /// Parses one grammar-IR rule with ordered-choice backtracking, or returns `nil` on a mismatch.
+    ///
+    /// A `nil` return may leave the cursor advanced; every backtracking site (`choice`, `optional`,
+    /// `repeatZeroOrMore`) restores it before trying an alternative or giving up, mirroring the reference
+    /// engine. `precedence` wrappers carry no recovery semantics and are walked transparently (the rewritten
+    /// grammar is no longer left-recursive, so this terminates).
+    private func recover(_ rule: Rule) -> [GreenChild]? {
+        switch rule {
+        case .token(let name, let matcher, let isNamed):
+            guard let child = consumeToken(matcher, isNamed: isNamed, name: name, field: nil) else { return nil }
+            return [child]
+
+        case .reference(let name):
+            guard let body = grammar.rules[name], let kids = recover(body) else { return nil }
+            if name.hasPrefix("_") { return kids }  // hidden rule: splice into the parent
+            return [GreenChild(node: .node(SyntaxKind(name, isNamed: true), children: kids))]
+
+        case .sequence(let rules):
+            var kids: [GreenChild] = []
+            kids.reserveCapacity(rules.count)
+            for r in rules {
+                guard let part = recover(r) else { return nil }
+                kids.append(contentsOf: part)
+            }
+            return kids
+
+        case .choice(let alternatives):
+            for alternative in alternatives {
+                let savedIndex = index
+                let savedOffset = byteOffset
+                if let kids = recover(alternative) { return kids }
+                index = savedIndex
+                byteOffset = savedOffset
+            }
+            return nil
+
+        case .optional(let sub):
+            let savedIndex = index
+            let savedOffset = byteOffset
+            if let kids = recover(sub) { return kids }
+            index = savedIndex
+            byteOffset = savedOffset
+            return []
+
+        case .repeatZeroOrMore(let sub):
+            return recoverRepeating(sub, atLeastOne: false)
+
+        case .repeatOneOrMore(let sub):
+            return recoverRepeating(sub, atLeastOne: true)
+
+        case .field(let name, let sub):
+            guard let kids = recover(sub) else { return nil }
+            if kids.count == 1 { return [GreenChild(field: name, node: kids[0].node)] }
+            let group = GreenNode.node(SyntaxKind("group", isNamed: false), children: kids)
+            return [GreenChild(field: name, node: group)]
+
+        case .precedence(_, _, let sub):
+            return recover(sub)
+        }
+    }
+
+    /// Parses a repeated sub-rule under recovery, stopping at the first iteration that fails or matches empty.
+    private func recoverRepeating(_ sub: Rule, atLeastOne: Bool) -> [GreenChild]? {
+        var kids: [GreenChild] = []
+        if atLeastOne {
+            guard let first = recover(sub) else { return nil }
+            kids.append(contentsOf: first)
+        }
+        while true {
+            let savedIndex = index
+            let savedOffset = byteOffset
+            guard let next = recover(sub), index != savedIndex else {
+                index = savedIndex
+                byteOffset = savedOffset
+                break  // a failed or zero-width iteration ends the repetition, as in the reference engine
+            }
+            kids.append(contentsOf: next)
+        }
+        return kids
     }
 
     // MARK: - Rule walking (§6.2)
