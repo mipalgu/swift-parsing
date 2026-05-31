@@ -2,11 +2,18 @@ import Benchmark
 import ParsingCore
 import ParsingDSL
 import RecursiveDescent
+import SwiftALLStar
+import SwiftGLR
 
-// Performance benchmarks for the native parser engine. They are run by the package-benchmark plugin
+// Performance benchmarks for the native parser engines. They are run by the package-benchmark plugin
 // (`swift package benchmark`) and are not part of the shipped libraries. The metrics gathered are
 // wall-clock time, throughput, total malloc count, and peak resident memory, so both speed and
 // allocation behaviour are tracked against a saved baseline.
+//
+// The core of the suite is a parity matrix: the three native engines (recursive descent, GLR, ALL(*))
+// parse the same large input for each of the three real languages, so their throughput and allocation can
+// be compared directly. A small-input and an alternate-granularity case on the reference engine give a
+// fast smoke signal. See BENCHMARKS.md for the methodology and the CI regression-threshold policy.
 
 /// Builds a representative JSON document with the given number of array elements.
 ///
@@ -98,6 +105,13 @@ private func makeC(functionCount: Int) -> String {
     return parts.joined(separator: "\n")
 }
 
+/// A large input for each real language, built once and reused so generation never enters a measurement.
+private let parityInputs: [(language: String, grammar: Grammar, source: Source)] = [
+    ("JSON", JSONGrammar.grammar(), Source(makeJSON(objectCount: 1024))),
+    ("Lua", LuaGrammar.chunk(), Source(makeLua(functionCount: 256))),
+    ("C", CGrammar.translationUnit(), Source(makeC(functionCount: 256))),
+]
+
 let benchmarks: @Sendable () -> Void = {
     Benchmark.defaultConfiguration.metrics = [
         .wallClock,
@@ -106,71 +120,40 @@ let benchmarks: @Sendable () -> Void = {
         .peakMemoryResident,
     ]
 
-    let grammar = JSONGrammar.grammar()
-    let smallSource = Source(makeJSON(objectCount: 16))
-    let largeSource = Source(makeJSON(objectCount: 1024))
-
-    Benchmark("Parse small JSON (UTF-8, 16 objects)") { benchmark in
-        let engine = try UTF8Parser(grammar: grammar)
-        benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations {
-            blackHole(engine.parse(smallSource))
+    // The parity matrix: each native engine over the same large input per language. Engine construction is
+    // outside `startMeasurement`, so only steady-state parsing of identical input is compared.
+    for (language, grammar, source) in parityInputs {
+        Benchmark("Parse large \(language) (recursive descent)") { benchmark in
+            let engine = try UTF8Parser(grammar: grammar)
+            benchmark.startMeasurement()
+            for _ in benchmark.scaledIterations { blackHole(engine.parse(source)) }
+        }
+        Benchmark("Parse large \(language) (GLR)") { benchmark in
+            let engine = try UTF8GLRParser(grammar: grammar)
+            benchmark.startMeasurement()
+            for _ in benchmark.scaledIterations { blackHole(engine.parse(source)) }
+        }
+        Benchmark("Parse large \(language) (ALL-star)") { benchmark in
+            let engine = try ALLStarUTF8Parser(grammar: grammar)
+            benchmark.startMeasurement()
+            for _ in benchmark.scaledIterations { blackHole(engine.parse(source)) }
         }
     }
 
-    Benchmark("Parse large JSON (UTF-8, 1024 objects)") { benchmark in
-        let engine = try UTF8Parser(grammar: grammar)
+    // Smoke signals on the reference engine: a small input and an alternate input granularity.
+    let json = JSONGrammar.grammar()
+    let smallJSON = Source(makeJSON(objectCount: 16))
+    let largeJSON = Source(makeJSON(objectCount: 1024))
+
+    Benchmark("Parse small JSON (recursive descent, 16 objects)") { benchmark in
+        let engine = try UTF8Parser(grammar: json)
         benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations {
-            blackHole(engine.parse(largeSource))
-        }
+        for _ in benchmark.scaledIterations { blackHole(engine.parse(smallJSON)) }
     }
 
-    Benchmark("Parse large JSON (Unicode scalars, 1024 objects)") { benchmark in
-        let engine = try ScalarParser(grammar: grammar)
+    Benchmark("Parse large JSON (recursive descent, Unicode scalars)") { benchmark in
+        let engine = try ScalarParser(grammar: json)
         benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations {
-            blackHole(engine.parse(largeSource))
-        }
-    }
-
-    let luaGrammar = LuaGrammar.chunk()
-    let smallLuaSource = Source(makeLua(functionCount: 8))
-    let largeLuaSource = Source(makeLua(functionCount: 256))
-
-    Benchmark("Parse small Lua (UTF-8, 8 functions)") { benchmark in
-        let engine = try UTF8Parser(grammar: luaGrammar)
-        benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations {
-            blackHole(engine.parse(smallLuaSource))
-        }
-    }
-
-    Benchmark("Parse large Lua (UTF-8, 256 functions)") { benchmark in
-        let engine = try UTF8Parser(grammar: luaGrammar)
-        benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations {
-            blackHole(engine.parse(largeLuaSource))
-        }
-    }
-
-    let cGrammar = CGrammar.translationUnit()
-    let smallCSource = Source(makeC(functionCount: 8))
-    let largeCSource = Source(makeC(functionCount: 256))
-
-    Benchmark("Parse small C (UTF-8, 8 functions)") { benchmark in
-        let engine = try UTF8Parser(grammar: cGrammar)
-        benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations {
-            blackHole(engine.parse(smallCSource))
-        }
-    }
-
-    Benchmark("Parse large C (UTF-8, 256 functions)") { benchmark in
-        let engine = try UTF8Parser(grammar: cGrammar)
-        benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations {
-            blackHole(engine.parse(largeCSource))
-        }
+        for _ in benchmark.scaledIterations { blackHole(engine.parse(largeJSON)) }
     }
 }

@@ -137,7 +137,7 @@ if Context.environment["BENCHMARK"] != nil {
         .executableTarget(
             name: "ParseBenchmarks",
             dependencies: [
-                "ParsingCore", "ParsingDSL", "RecursiveDescent",
+                "ParsingCore", "ParsingDSL", "RecursiveDescent", "SwiftGLR", "SwiftALLStar",
                 .product(name: "Benchmark", package: "package-benchmark"),
             ],
             path: "Benchmarks/ParseBenchmarks",
