@@ -71,6 +71,19 @@ public enum LuaGrammar {
         Match.notFollowedBy(identifierContinue)
     }
 
+    /// A keyword token: the literal `text` standing at a word boundary, as an anonymous token named `text`.
+    ///
+    /// Sequencing the ``keywordBoundary`` assertion after the literal stops a keyword from being read as the
+    /// prefix of a longer identifier, so `localx` is the single identifier `localx`, never the keyword
+    /// `local` followed by `x`. Without it a keyword-led statement (such as a `local` declaration or a `for`
+    /// loop) can capture an identifier that merely begins with the keyword, which makes the recursive-descent
+    /// engine disagree with the GLR and ALL(*) engines and breaks the byte-identical differential. The node
+    /// it builds is identical to a bare string literal (an anonymous token whose kind name is `text`); only
+    /// the matcher gains the boundary, so existing trees are unchanged.
+    private static func keyword(_ text: String) -> RuleExpr {
+        RuleExpr(.token(name: text, matcher: Match.seq(Match.lit(text), keywordBoundary), isNamed: false))
+    }
+
     /// A matcher that matches exactly one reserved word standing at a word boundary.
     ///
     /// It is the alternation of every reserved word, each followed by the ``keywordBoundary`` assertion, so
@@ -270,7 +283,7 @@ public enum LuaGrammar {
 
             rule("return_statement") {
                 seq {
-                    "return"
+                    keyword("return")
                     optional { ref("expression_list") }
                     optional { ";" }
                 }
@@ -298,10 +311,10 @@ public enum LuaGrammar {
             }
 
             rule("empty_statement") { ";" }
-            rule("break_statement") { "break" }
+            rule("break_statement") { keyword("break") }
             rule("goto_statement") {
                 seq {
-                    "goto"
+                    keyword("goto")
                     field("label") { ref("name") }
                 }
             }
@@ -315,60 +328,60 @@ public enum LuaGrammar {
 
             rule("do_statement") {
                 seq {
-                    "do"
+                    keyword("do")
                     ref("block")
-                    "end"
+                    keyword("end")
                 }
             }
 
             rule("while_statement") {
                 seq {
-                    "while"
+                    keyword("while")
                     field("condition") { ref("expression") }
-                    "do"
+                    keyword("do")
                     field("body") { ref("block") }
-                    "end"
+                    keyword("end")
                 }
             }
 
             rule("repeat_statement") {
                 seq {
-                    "repeat"
+                    keyword("repeat")
                     field("body") { ref("block") }
-                    "until"
+                    keyword("until")
                     field("condition") { ref("expression") }
                 }
             }
 
             rule("if_statement") {
                 seq {
-                    "if"
+                    keyword("if")
                     field("condition") { ref("expression") }
-                    "then"
+                    keyword("then")
                     field("consequence") { ref("block") }
                     repeat0 { ref("elseif_clause") }
                     optional { ref("else_clause") }
-                    "end"
+                    keyword("end")
                 }
             }
             rule("elseif_clause") {
                 seq {
-                    "elseif"
+                    keyword("elseif")
                     field("condition") { ref("expression") }
-                    "then"
+                    keyword("then")
                     field("consequence") { ref("block") }
                 }
             }
             rule("else_clause") {
                 seq {
-                    "else"
+                    keyword("else")
                     field("body") { ref("block") }
                 }
             }
 
             rule("for_numeric_statement") {
                 seq {
-                    "for"
+                    keyword("for")
                     field("name") { ref("name") }
                     "="
                     field("start") { ref("expression") }
@@ -380,27 +393,27 @@ public enum LuaGrammar {
                             field("step") { ref("expression") }
                         }
                     }
-                    "do"
+                    keyword("do")
                     field("body") { ref("block") }
-                    "end"
+                    keyword("end")
                 }
             }
 
             rule("for_generic_statement") {
                 seq {
-                    "for"
+                    keyword("for")
                     field("names") { ref("name_list") }
-                    "in"
+                    keyword("in")
                     field("values") { ref("expression_list") }
-                    "do"
+                    keyword("do")
                     field("body") { ref("block") }
-                    "end"
+                    keyword("end")
                 }
             }
 
             rule("function_declaration") {
                 seq {
-                    "function"
+                    keyword("function")
                     field("name") { ref("function_name") }
                     field("body") { ref("function_body") }
                 }
@@ -426,8 +439,8 @@ public enum LuaGrammar {
 
             rule("local_function_statement") {
                 seq {
-                    "local"
-                    "function"
+                    keyword("local")
+                    keyword("function")
                     field("name") { ref("name") }
                     field("body") { ref("function_body") }
                 }
@@ -435,7 +448,7 @@ public enum LuaGrammar {
 
             rule("local_declaration") {
                 seq {
-                    "local"
+                    keyword("local")
                     field("names") { ref("attributed_name_list") }
                     optional {
                         seq {
@@ -505,7 +518,7 @@ public enum LuaGrammar {
                     ref("and_expression")
                     repeat0 {
                         seq {
-                            "or"
+                            keyword("or")
                             ref("and_expression")
                         }
                     }
@@ -516,7 +529,7 @@ public enum LuaGrammar {
                     ref("comparison_expression")
                     repeat0 {
                         seq {
-                            "and"
+                            keyword("and")
                             ref("comparison_expression")
                         }
                     }
@@ -624,7 +637,7 @@ public enum LuaGrammar {
                 choice {
                     seq {
                         choice {
-                            "not"; "#"; "-"; "~"
+                            keyword("not"); "#"; "-"; "~"
                         }
                         ref("unary_expression")
                     }
@@ -660,14 +673,14 @@ public enum LuaGrammar {
                 }
             }
 
-            rule("nil") { "nil" }
-            rule("true") { "true" }
-            rule("false") { "false" }
+            rule("nil") { keyword("nil") }
+            rule("true") { keyword("true") }
+            rule("false") { keyword("false") }
             rule("vararg_expression") { "..." }
 
             rule("function_expression") {
                 seq {
-                    "function"
+                    keyword("function")
                     ref("function_body")
                 }
             }
@@ -779,7 +792,7 @@ public enum LuaGrammar {
                     optional { ref("parameter_list") }
                     ")"
                     ref("block")
-                    "end"
+                    keyword("end")
                 }
             }
             rule("parameter_list") {
@@ -974,12 +987,12 @@ public enum LuaGrammar {
                     }
                     precedence(level: 2, associativity: .left) {
                         seq {
-                            ref("exp"); field("operator") { "and" }; ref("exp")
+                            ref("exp"); field("operator") { keyword("and") }; ref("exp")
                         }
                     }
                     precedence(level: 1, associativity: .left) {
                         seq {
-                            ref("exp"); field("operator") { "or" }; ref("exp")
+                            ref("exp"); field("operator") { keyword("or") }; ref("exp")
                         }
                     }
                     // Unary operators (level 11) bind below power but above the binary tiers. The alternative
@@ -999,7 +1012,7 @@ public enum LuaGrammar {
             rule("unary_operator") {
                 field("operator") {
                     choice {
-                        "not"; "#"; "-"; "~"
+                        keyword("not"); "#"; "-"; "~"
                     }
                 }
             }
@@ -1022,9 +1035,9 @@ public enum LuaGrammar {
                     ")"
                 }
             }
-            rule("nil") { "nil" }
-            rule("true") { "true" }
-            rule("false") { "false" }
+            rule("nil") { keyword("nil") }
+            rule("true") { keyword("true") }
+            rule("false") { keyword("false") }
 
             // Shared lexical core.
             rule("name") { token(nameMatcher) }
