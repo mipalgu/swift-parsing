@@ -102,6 +102,49 @@ struct RoundTripTests {
         let reimported = try EBNFGrammar.grammar(from: text, name: "lit", startRule: "s")
         #expect(reimported == original)
     }
+
+    /// EBNF source grammars whose import → export → import identity must hold, by descriptive name.
+    static let textGrammars: [(name: String, source: String)] = [
+        (
+            "references and quantifiers",
+            """
+            greeting ::= 'hello' name? punctuation*
+            name ::= letter+
+            letter ::= [a-zA-Z]
+            punctuation ::= '!' | '.'
+            """
+        ),
+        (
+            "character classes and ranges",
+            """
+            number ::= '-'? digit+ ('.' digit+)?
+            digit ::= [0-9]
+            hex ::= '0x' [0-9a-fA-F]+
+            """
+        ),
+        (
+            "negation and grouping",
+            """
+            string ::= '"' char* '"'
+            char ::= [^"]
+            """
+        ),
+    ]
+
+    @Test("import, export and re-import of EBNF text yields an equal grammar", arguments: textGrammars.map(\.name))
+    func textRoundTripIsIdentity(_ name: String) throws {
+        let source = try #require(Self.textGrammars.first { $0.name == name }).source
+        let imported = try EBNFGrammar.grammar(from: source, name: "g")
+        let exported = EBNFGrammar.export(imported)
+        let reimported = try EBNFGrammar.grammar(from: exported, name: "g", startRule: imported.startRule)
+        #expect(
+            reimported == imported,
+            """
+            round-trip changed the grammar for \(name).
+            exported EBNF:
+            \(exported)
+            """)
+    }
 }
 
 @Suite("EBNF hand-written import")

@@ -1,12 +1,14 @@
 import Foundation
 import ParsingCore
 
-/// Imports ANTLR `.g4` grammar text into the `ParsingCore` grammar intermediate representation.
+/// Imports and exports ANTLR `.g4` grammar text to and from the `ParsingCore` grammar intermediate
+/// representation.
 ///
 /// `.g4` is the human-authored ANTLR grammar format that defines a language's parser and lexer rules in
 /// one combined file. This importer lowers a documented subset of that format directly into the
 /// framework's scannerless `Grammar`, so a grammar written for ANTLR can be parsed by the native engine
-/// without ANTLR or the JVM.
+/// without ANTLR or the JVM. ``export(_:)`` renders an imported grammar back to `.g4` text, so the
+/// mapping round-trips: importing the exported text reproduces the same grammar.
 ///
 /// ## Supported subset
 ///
@@ -55,6 +57,20 @@ public enum G4Grammar {
     /// - Throws: `G4ImportError` if the text is malformed or uses an unsupported construct.
     public static func grammar(from data: Data) throws(G4ImportError) -> Grammar {
         try grammar(fromString: String(decoding: data, as: UTF8.self))
+    }
+
+    /// Exports a grammar to ANTLR `.g4` text, the inverse of ``grammar(fromString:)``.
+    ///
+    /// The start rule is emitted first (so a re-import recovers it as the goal symbol), then the remaining
+    /// parser rules by name, then the lexer rules reconstructed from inlined token matchers, then any
+    /// non-default trivia as `-> skip` rules. Importing the result reproduces the same `Grammar` for every
+    /// construct this importer supports, which is the round-trip the test suite pins.
+    ///
+    /// - Parameter grammar: The grammar to export.
+    /// - Returns: The `.g4` grammar text, terminated by a newline.
+    public static func export(_ grammar: Grammar) -> String {
+        var exporter = G4Exporter()
+        return exporter.render(grammar)
     }
 
     /// A JSON grammar expressed in ANTLR `.g4` syntax, shipped as a portable string so it is available
