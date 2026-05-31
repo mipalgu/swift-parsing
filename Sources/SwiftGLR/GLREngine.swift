@@ -48,8 +48,10 @@ public struct GLREngine<Input: ParserInput>: ParserEngine {
     /// Reparses an edited source, reusing the unchanged subtrees of a previous parse.
     ///
     /// The tree is byte-for-byte what a full ``parse(_:)`` of `source` would produce; the gain is that every
-    /// subtree the edits leave unchanged is taken from `previous` by identity rather than re-allocated, via
-    /// the tree builder's reuse pool. An empty edit list over an unchanged source returns `previous` directly.
+    /// subtree the edits leave unchanged keeps its previous identity rather than being re-allocated. An empty
+    /// edit list over an unchanged source returns `previous` directly. For a document edited repeatedly,
+    /// `incrementalParse(_:)` returns a session that additionally skips re-examining the unchanged input
+    /// before the first edit.
     ///
     /// - Parameters:
     ///   - source: The edited source to parse.

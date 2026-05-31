@@ -15,7 +15,7 @@ jobs:
     name: macOS universal binary
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -28,7 +28,7 @@ jobs:
         run: |
           tar -czf swift-parsing-macos-universal.tar.gz swift-parsing-macos
           shasum -a 256 swift-parsing-macos-universal.tar.gz > swift-parsing-macos-universal.tar.gz.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: swift-parsing-macos-universal.tar.gz*
@@ -41,7 +41,7 @@ jobs:
       matrix:
         triple: [x86_64-swift-linux-musl, aarch64-swift-linux-musl]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Static Linux SDK
         run: |
           swift sdk install \
@@ -56,7 +56,7 @@ jobs:
         run: |
           tar -czf swift-parsing-${{ matrix.triple }}.tar.gz swift-parsing-${{ matrix.triple }}
           sha256sum swift-parsing-${{ matrix.triple }}.tar.gz > swift-parsing-${{ matrix.triple }}.tar.gz.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.triple }}
           path: swift-parsing-${{ matrix.triple }}.tar.gz*
@@ -65,7 +65,7 @@ jobs:
     name: Windows binary
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: compnerd/gha-setup-swift@v0.3.0
         with:
           branch: swift-6.2-release
@@ -79,7 +79,7 @@ jobs:
           Copy-Item "$bin/swift-parsing.exe" swift-parsing.exe
           Compress-Archive -Path swift-parsing.exe -DestinationPath swift-parsing-windows-x86_64.zip
           (Get-FileHash swift-parsing-windows-x86_64.zip -Algorithm SHA256).Hash > swift-parsing-windows-x86_64.zip.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: swift-parsing-windows-x86_64.zip*
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.3.2-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install WebAssembly SDK
         run: |
           swift sdk install \
@@ -104,7 +104,7 @@ jobs:
         run: |
           gzip -c swift-parsing.wasm > swift-parsing-wasm.wasm.gz
           sha256sum swift-parsing-wasm.wasm.gz > swift-parsing-wasm.wasm.gz.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wasm
           path: swift-parsing-wasm.wasm.gz*
@@ -114,7 +114,7 @@ jobs:
     needs: [macos, linux-musl, windows, wasm]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: Publish

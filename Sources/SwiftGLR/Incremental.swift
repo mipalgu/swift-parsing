@@ -117,16 +117,21 @@ func glrAppendTrailing<Input: ParserInput>(
     return documentNode
 }
 
-/// A reusable GLR parsing session that reparses successive edits by re-deriving only the changed suffix.
+/// A reusable GLR parsing session that reparses successive edits by reusing the unchanged prefix.
 ///
-/// Where ``GLREngine/reparse(_:edits:previous:)`` keeps a full parse's work but reuses unchanged subtrees
-/// at tree-construction time, a session additionally truncates the graph-structured stack and shared packed
-/// parse forest to a sound, lexer-verified token boundary before the first edit and resumes parsing from
-/// there, so the unchanged prefix is neither re-lexed into tokens nor re-reduced. Each ``result`` is
-/// byte-for-byte what a full parse of the same source produces.
+/// Both this session and ``GLREngine/reparse(_:edits:previous:)`` always produce a tree byte-for-byte
+/// identical to a full parse of the edited source; they differ only in how much work they save.
+/// `reparse(_:edits:previous:)` reuses the unchanged subtrees of the previous tree by identity, whereas a
+/// session additionally avoids re-examining the unchanged input before the first edit. Reach for a session
+/// when the same document is edited repeatedly, such as an editor buffer; use `reparse(_:edits:previous:)`
+/// for a one-off reparse or where a uniform interface across every engine matters.
 ///
-/// A session is single use: ``reparse(_:edits:)`` consumes the shared forest in place and returns the next
-/// session to continue from. Continue editing through the returned session, not the previous one.
+/// The extra saving has a memory cost: a session retains parsing state proportional to the size of the
+/// input, and the work per edit scales with the distance to the first change plus the size of the edited
+/// remainder rather than with the whole input.
+///
+/// A session is single use: ``reparse(_:edits:)`` returns the next session to continue from. Keep editing
+/// through the returned session, not the previous one.
 public final class IncrementalGLRParser<Input: ParserInput> {
     /// The most recent parse result; byte-for-byte identical to a full parse of the current source.
     public let result: ParseResult

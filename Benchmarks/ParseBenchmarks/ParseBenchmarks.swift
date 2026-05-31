@@ -156,4 +156,36 @@ let benchmarks: @Sendable () -> Void = {
         benchmark.startMeasurement()
         for _ in benchmark.scaledIterations { blackHole(engine.parse(largeJSON)) }
     }
+
+    // Incremental reparse: a single late edit on a large document. The session reparse reuses the
+    // unchanged prefix, so it should run far faster than a full parse of the edited document; the memory
+    // metrics (configured above) capture the parsing state a session retains for the input's lifetime.
+    let incrementalBase = makeJSON(objectCount: 1024)
+    let incrementalBytes = Array(incrementalBase.utf8)
+    let incrementalEditAt = max(0, incrementalBytes.count - 1)
+    var incrementalEditedBytes = incrementalBytes
+    incrementalEditedBytes.insert(0x20, at: incrementalEditAt)  // a late whitespace insertion, still valid JSON
+    let incrementalEditedText = String(decoding: incrementalEditedBytes, as: UTF8.self)
+    let incrementalEdit = TextEdit(
+        startByte: incrementalEditAt, oldEndByte: incrementalEditAt, newEndByte: incrementalEditAt + 1)
+
+    Benchmark("Reparse large JSON after a late edit (GLR full parse baseline)") { benchmark in
+        let engine = try UTF8GLRParser(grammar: JSONGrammar.grammar())
+        let edited = Source(incrementalEditedText)
+        benchmark.startMeasurement()
+        for _ in benchmark.scaledIterations { blackHole(engine.parse(edited)) }
+    }
+
+    Benchmark("Reparse large JSON after a late edit (GLR incremental session)") { benchmark in
+        let engine = try UTF8GLRParser(grammar: JSONGrammar.grammar())
+        let original = Source(incrementalBase)
+        let edited = Source(incrementalEditedText)
+        let edits = [incrementalEdit]
+        benchmark.startMeasurement()
+        for _ in benchmark.scaledIterations {
+            let session = engine.incrementalParse(original)
+            blackHole(session.reparse(edited, edits: edits))
+        }
+    }
+
 }

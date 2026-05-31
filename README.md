@@ -101,6 +101,32 @@ print(result.tree.green.reconstructedText)   // round-trips exactly to the input
 Engines never throw past their API. Malformed input still yields a complete tree containing `ERROR`
 and `MISSING` nodes, alongside diagnostics describing each problem.
 
+## Incremental reparsing
+
+Every engine exposes `reparse(_:edits:previous:)`, which returns a tree identical to a full parse of the
+edited source. Engines that advertise the `incremental` capability (the GLR engine does) reuse the
+unchanged subtrees of the previous tree by identity, so an edit re-allocates only the parts of the tree it
+changes.
+
+The GLR engine also offers a reusable session for a document that is edited repeatedly:
+
+```swift
+import ParsingCore
+import ParsingDSL
+import SwiftGLR
+
+let engine = try UTF8GLRParser(grammar: JSONGrammar.grammar())
+var session = engine.incrementalParse(Source(#"{ "a": 1 }"#))
+session = session.reparse(Source(#"{ "a": 2 }"#), edits: [TextEdit(startByte: 7, oldEndByte: 8, newEndByte: 8)])
+print(session.result.sExpression())          // identical to a full parse of the edited source
+```
+
+A session additionally skips re-examining the unchanged input before the first edit, so the work per edit
+scales with the distance to the first change plus the size of the edited remainder rather than the whole
+input, at the cost of retaining parsing state proportional to the input size. Each `reparse` returns the
+next session to continue from. Whichever path you use, the resulting tree is byte-for-byte what a full
+parse would produce.
+
 ## Documentation
 
 Full API documentation and tutorials are published at

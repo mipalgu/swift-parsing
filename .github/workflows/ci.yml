@@ -20,7 +20,7 @@ jobs:
     name: macOS (test, coverage)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # The runner's default Xcode ships an older Swift than the 6.2 tools-version requires.
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -43,7 +43,7 @@ jobs:
             -ignore-filename-regex='Tests|\.build' --show-functions=false
       - name: Upload coverage report as a build artefact
         # The lcov report generated above is attached to the run as a downloadable artefact.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-lcov
           path: coverage.lcov
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.2-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build
         run: swift build
       - name: Test
@@ -64,7 +64,7 @@ jobs:
     name: iOS Simulator (test)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -81,7 +81,7 @@ jobs:
     name: Windows (test)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: compnerd/gha-setup-swift@v0.3.0
         with:
           branch: swift-6.2-release
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.3.2-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install WebAssembly SDK
         run: |
           swift sdk install \
@@ -139,7 +139,7 @@ jobs:
       matrix:
         triple: [x86_64-swift-linux-musl, aarch64-swift-linux-musl]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Static Linux SDK
         run: |
           swift sdk install \
@@ -155,7 +155,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.3.2-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Embedded WebAssembly SDK
         run: |
           swift sdk install \
@@ -174,7 +174,7 @@ jobs:
     # reproducible, rather than tracking whatever the macOS runner's Xcode ships.
     container: swift:6.3.2-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Lint
         # The .docc tutorial code listings are illustrative snippets, not API, so they are excluded.
         run: |
@@ -185,7 +185,7 @@ jobs:
     name: Documentation quality gate
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -206,7 +206,7 @@ jobs:
     container: swift:6.3.2-noble
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install jemalloc
         run: apt-get update && apt-get install -y libjemalloc-dev
       - name: Run benchmarks
