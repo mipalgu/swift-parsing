@@ -22,8 +22,8 @@ public struct GLREngine<Input: ParserInput>: ParserEngine {
     /// The stable identifier under which this engine is registered, suffixed with the input granularity.
     public static var identifier: String { "glr-\(Input.granularityName)" }
 
-    private let tables: GLRTables
-    private let startRuleName: String
+    let tables: GLRTables
+    let startRuleName: String
 
     /// Creates an engine for a grammar, building its parse tables.
     ///
@@ -67,73 +67,9 @@ public struct GLREngine<Input: ParserInput>: ParserEngine {
         let sppf = SPPF()
         let parser = GLRParser<Input>(tables: tables, input: input)
         let outcome = parser.run(sppf: sppf)
-
-        var builder = TreeBuilder(tables: tables, disambiguating: sppf.hasPacking, reusePool: pool)
-        var diagnostics: [Diagnostic] = []
-        let documentKind = SyntaxKind(startRuleName, isNamed: true)
-
-        var documentNode: GreenNode
-        var resumeCursor: Input.Index
-        var resumeOffset: Int
-
-        if let root = outcome.completedRoot {
-            let kids = builder.emitRoot(root)
-            documentNode = GreenNode.node(documentKind, children: kids)
-            resumeCursor = outcome.rootEndCursor
-            resumeOffset = outcome.rootEndOffset
-        } else {
-            // Wholly unparseable input: recover with a MISSING value, matching the reference engine.
-            diagnostics.append(
-                .error(
-                    Recovery.missingStartMessage(startRule: startRuleName),
-                    at: .empty(at: outcome.endOffset)))
-            documentNode = GreenNode.node(
-                documentKind, children: [.init(node: .missingToken(Recovery.missingValueKind))])
-            resumeCursor = input.startIndex
-            resumeOffset = 0
-        }
-
-        for ambiguity in builder.ambiguities {
-            diagnostics.append(
-                Diagnostic(
-                    severity: .warning,
-                    message: "ambiguous parse of \(ambiguity.rule), resolved by the disambiguation policy",
-                    span: ambiguity.span))
-        }
-
-        documentNode = appendTrailing(
-            to: documentNode, input: input, from: resumeCursor, offset: resumeOffset,
-            diagnostics: &diagnostics)
-
-        return ParseResult(
-            tree: Syntax(documentNode), source: source, diagnostics: diagnostics)
-    }
-
-    /// Appends trailing trivia or trailing junk to the document node, mirroring the reference engine.
-    ///
-    /// Trivia after the completed parse is consumed first. If input remains, it becomes an `ERROR` node
-    /// carrying the residue with the trivia as leading trivia, and an error diagnostic. If only trivia
-    /// remains, it is attached to a zero-width carrier token so the tree round-trips losslessly.
-    private func appendTrailing(
-        to documentNode: GreenNode, input: Input, from cursor: Input.Index, offset: Int,
-        diagnostics: inout [Diagnostic]
-    ) -> GreenNode {
-        let lexer = Lexer<Input>(input: input, terminals: tables.terminals, extras: tables.extras)
-        let (afterTrivia, trivia) = lexer.consumeTrivia(at: cursor)
-        if afterTrivia != input.endIndex {
-            diagnostics.append(.error(Recovery.trailingMessage, at: .empty(at: offset)))
-            let junk = Input.text(of: input[afterTrivia..<input.endIndex])
-            let errorToken = GreenNode.token(
-                Recovery.errorTokenKind, text: junk, leadingTrivia: trivia)
-            let errorNode = GreenNode.errorNode(children: [.init(node: errorToken)])
-            return GreenNode.node(
-                documentNode.kind, children: documentNode.children + [.init(node: errorNode)])
-        } else if !trivia.isEmpty {
-            let carrier = GreenNode.token(SyntaxKind("", isNamed: false), text: "", leadingTrivia: trivia)
-            return GreenNode.node(
-                documentNode.kind, children: documentNode.children + [.init(node: carrier)])
-        }
-        return documentNode
+        return glrBuildResult(
+            outcome: outcome, input: input, sppf: sppf, tables: tables,
+            startRuleName: startRuleName, source: source, reuse: pool)
     }
 }
 

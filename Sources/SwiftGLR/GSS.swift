@@ -70,6 +70,13 @@ final class GSS {
         frontier = newFrontier
     }
 
+    /// Restores the frontier to a saved set of vertices, for resuming a parse from a checkpoint.
+    ///
+    /// - Parameter frontier: The vertices forming the frontier to resume from.
+    func resume(from frontier: [Int: GSSNode]) {
+        self.frontier = frontier
+    }
+
     /// Enumerates all paths of a given length backward from a vertex.
     ///
     /// Each path is the ordered list of forest nodes labelling the traversed edges, from the stack

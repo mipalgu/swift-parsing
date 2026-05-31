@@ -136,4 +136,20 @@ final class SPPF {
         if !node.families.isEmpty { hasPacking = true }
         node.families.append(PackedFamily(production: production, children: children))
     }
+
+    /// Drops every interned node whose span reaches a byte offset or beyond, for incremental resumption.
+    ///
+    /// Resuming a parse at a token boundary re-derives everything from that offset, including the reductions
+    /// that end exactly at it, since those depend on the (changed) lookahead just past the boundary. Only
+    /// nodes lying strictly within the reused prefix (ending before the offset) are kept, so re-interning a
+    /// freshly derived node never collides with a stale one from the previous parse. The forest's nodes are
+    /// still referenced directly by the saved graph-structured-stack edges, so dropping them from the intern
+    /// maps affects only future interning, not the surviving prefix. The monotonic id counters and the
+    /// packing flag are preserved so newly built suffix nodes keep distinct identities.
+    ///
+    /// - Parameter offset: The prefix boundary byte offset; nodes ending at or after it are dropped.
+    func truncate(removingFrom offset: Int) {
+        nonterminalNodes = nonterminalNodes.filter { $0.value.end < offset }
+        terminalNodes = terminalNodes.filter { $0.value.end < offset }
+    }
 }

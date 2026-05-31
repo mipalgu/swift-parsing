@@ -1,5 +1,83 @@
 import ParsingCore
 
+/// A lexer signature for one input level: a terminal recognised at the level and its content byte length.
+///
+/// A reparse re-lexes the edited input at a reused position and compares the candidates it recognises to
+/// the recorded ones; equality (together with matching trivia) proves the token boundary still holds in the
+/// edited input, so the saved parser configuration at that point is sound to resume from. This verifies
+/// boundaries rather than assuming them, which is what makes resumption correct across token merges, splits
+/// and re-opened forward-scanning tokens such as strings and comments.
+struct TokenMatchSig: Hashable, Comparable {
+    /// The recognised terminal's id.
+    let terminalID: Int
+    /// The match's content length in UTF-8 bytes.
+    let byteLength: Int
+
+    static func < (lhs: TokenMatchSig, rhs: TokenMatchSig) -> Bool {
+        lhs.terminalID != rhs.terminalID
+            ? lhs.terminalID < rhs.terminalID : lhs.byteLength < rhs.byteLength
+    }
+}
+
+/// A saved parser configuration at the top of one input level, captured for incremental resumption.
+///
+/// It records the byte offset reached, a deep copy of the post-shift frontier, and the lexer outcome at the
+/// level (the trivia consumed, the candidates recognised, and the byte length of the token shifted out). A
+/// reparse uses the lexer outcome to verify the prefix is unchanged and the frontier to resume from it.
+final class Checkpoint {
+    /// The byte offset reached at this level: the end of the previously shifted token's content.
+    let byteOffset: Int
+    /// A deep copy of the post-shift graph-structured-stack frontier at this level.
+    let frontier: [Int: GSSNode]
+    /// The byte length of the trivia consumed before this level's lookahead token.
+    var triviaByteLength: Int = 0
+    /// The byte length of the token shifted out of this level (zero at the final, end-of-input level).
+    var advanceByteLength: Int = 0
+    /// The lexer candidates recognised at this level, sorted, used to verify the boundary on reparse.
+    var matches: [TokenMatchSig] = []
+
+    init(byteOffset: Int, frontier: [Int: GSSNode]) {
+        self.byteOffset = byteOffset
+        self.frontier = frontier
+    }
+}
+
+/// Collects the per-level checkpoints of a parse so a later edit can resume from an unchanged prefix.
+final class CheckpointRecorder {
+    /// The checkpoints in level order, one per input level including the final end-of-input level.
+    var checkpoints: [Checkpoint] = []
+}
+
+/// A point from which to resume a parse: the level, byte offset, input cursor and frontier to restore.
+struct ResumePoint<Input: ParserInput> {
+    /// The input level to resume at.
+    let level: Int
+    /// The byte offset to resume at.
+    let byteOffset: Int
+    /// The input cursor in the edited input at `byteOffset`.
+    let cursor: Input.Index
+    /// The frontier to restore (the saved post-shift frontier for the level).
+    let frontier: [Int: GSSNode]
+}
+
+/// Deep-copies a frontier so a snapshot keeps the edge set it had when the snapshot was taken.
+///
+/// Each vertex is duplicated with its current edges; the edges' predecessor vertices and forest labels are
+/// shared, because they belong to already-finished levels and are never mutated again. A later append to a
+/// live vertex's edges triggers copy-on-write on its array and so leaves the snapshot untouched. The copy
+/// is essential because a level's reductions merge fresh goto vertices into the live frontier after the
+/// snapshot, which would otherwise pollute a configuration meant to be frozen.
+func deepCopyFrontier(_ frontier: [Int: GSSNode]) -> [Int: GSSNode] {
+    var copy: [Int: GSSNode] = [:]
+    copy.reserveCapacity(frontier.count)
+    for (state, node) in frontier {
+        let duplicate = GSSNode(state: node.state, level: node.level)
+        duplicate.edges = node.edges
+        copy[state] = duplicate
+    }
+    return copy
+}
+
 /// The outcome of driving the RNGLR parse loop.
 ///
 /// `completedRoot` references the start-symbol forest node once the start rule has been fully derived.
@@ -99,12 +177,24 @@ struct GLRParser<Input: ParserInput> {
     ///
     /// - Parameter sppf: The forest to populate; the tree builder reads it afterward.
     /// - Returns: The parse outcome, including the completed start-symbol root, if any.
-    func run(sppf: SPPF) -> ParseOutcome<Input> {
+    func run(
+        sppf: SPPF, resume: ResumePoint<Input>? = nil, recorder: CheckpointRecorder? = nil
+    ) -> ParseOutcome<Input> {
         let gss = GSS()
-        var byteOffset = 0
-        var level = 0
-        var cursor = input.startIndex
-        _ = gss.node(state: tables.startState, level: 0)
+        var byteOffset: Int
+        var level: Int
+        var cursor: Input.Index
+        if let resume {
+            gss.resume(from: resume.frontier)
+            byteOffset = resume.byteOffset
+            level = resume.level
+            cursor = resume.cursor
+        } else {
+            byteOffset = 0
+            level = 0
+            cursor = input.startIndex
+            _ = gss.node(state: tables.startState, level: 0)
+        }
 
         var completedRoot: SPPFNode? = nil
         var rootEndOffset = 0
@@ -112,6 +202,18 @@ struct GLRParser<Input: ParserInput> {
         let step = Step()
 
         while true {
+            // Record a checkpoint of the live frontier at the top of the loop, before this level's
+            // reductions merge goto vertices into it. The deep copy freezes the post-shift edge set so a
+            // later reparse can resume from exactly this configuration.
+            let checkpoint: Checkpoint?
+            if let recorder {
+                let saved = Checkpoint(byteOffset: byteOffset, frontier: deepCopyFrontier(gss.frontier))
+                recorder.checkpoints.append(saved)
+                checkpoint = saved
+            } else {
+                checkpoint = nil
+            }
+
             // The lexer must try every terminal the live states could act on: those they can shift now,
             // and those that key a reduction (so an epsilon or right-nulled reduction whose lookahead is
             // a not-yet-shiftable terminal still fires).
@@ -126,6 +228,13 @@ struct GLRParser<Input: ParserInput> {
                 at: cursor, expected: expected)
             let atEnd = afterTrivia == input.endIndex
             let triviaBytes = byteOffset + triviaByteLength
+
+            if let checkpoint {
+                checkpoint.triviaByteLength = triviaByteLength
+                checkpoint.matches = matches.map {
+                    TokenMatchSig(terminalID: $0.terminalID, byteLength: $0.byteLength)
+                }.sorted()
+            }
 
             var lookaheads: Set<Int> = []
             lookaheads.reserveCapacity(matches.count + 1)
@@ -196,6 +305,7 @@ struct GLRParser<Input: ParserInput> {
                     completedRoot: completedRoot, acceptedAtEnd: false, endOffset: triviaBytes,
                     endCursor: afterTrivia, rootEndOffset: rootEndOffset, rootEndCursor: rootEndCursor)
             }
+            checkpoint?.advanceByteLength = match.byteLength
             byteOffset = triviaBytes + match.byteLength
             cursor = match.endIndex
             level = nextLevel
