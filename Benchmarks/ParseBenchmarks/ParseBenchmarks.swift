@@ -112,6 +112,49 @@ private let parityInputs: [(language: String, grammar: Grammar, source: Source)]
     ("C", CGrammar.translationUnit(), Source(makeC(functionCount: 256))),
 ]
 
+/// A large document together with a single, small edit applied late in the text, used to contrast an
+/// incremental reparse against a full reparse.
+///
+/// The edit rewrites the numeric `id` of the very last object, so the first changed byte sits near the
+/// end of the source. An incremental session can therefore reuse almost the entire verified token prefix
+/// and re-derive only the short suffix, whereas a full parse must re-process the whole document.
+private struct LateEditFixture {
+    /// The original document, before the edit.
+    let original: Source
+    /// The document after the edit has been applied.
+    let edited: Source
+    /// The single edit, expressed in UTF-8 byte offsets.
+    let edit: TextEdit
+
+    /// Builds the fixture for the given JSON document, replacing one substring late in the text.
+    /// - Parameter objectCount: The number of objects in the generated JSON document.
+    init(objectCount: Int) {
+        let base = makeJSON(objectCount: objectCount)
+        // The last object contains the substring `"id":<n>` with <n> equal to `objectCount - 1`.
+        // Replacing that number with a longer one produces a small edit near the end of the document.
+        let needle = #""id":\#(objectCount - 1),"#
+        let replacement = #""id":\#(objectCount + 1_000_000),"#
+        guard let range = base.range(of: needle, options: .backwards) else {
+            self.original = Source(base)
+            self.edited = Source(base)
+            self.edit = TextEdit(startByte: 0, oldEndByte: 0, newEndByte: 0)
+            return
+        }
+        // Convert the substring range to UTF-8 byte offsets, matching the engine's byte-offset contract.
+        let startByte = base.utf8.distance(from: base.utf8.startIndex, to: range.lowerBound.samePosition(in: base.utf8)!)
+        let oldEndByte = startByte + needle.utf8.count
+        let newEndByte = startByte + replacement.utf8.count
+
+        self.original = Source(base)
+        self.edited = Source(base.replacingCharacters(in: range, with: replacement))
+        self.edit = TextEdit(startByte: startByte, oldEndByte: oldEndByte, newEndByte: newEndByte)
+    }
+}
+
+/// A large JSON document with a single small edit late in the text, built once and reused so document
+/// generation never enters a measurement.
+private let incrementalFixture = LateEditFixture(objectCount: 4096)
+
 let benchmarks: @Sendable () -> Void = {
     Benchmark.defaultConfiguration.metrics = [
         .wallClock,
@@ -157,35 +200,53 @@ let benchmarks: @Sendable () -> Void = {
         for _ in benchmark.scaledIterations { blackHole(engine.parse(largeJSON)) }
     }
 
-    // Incremental reparse: a single late edit on a large document. The session reparse reuses the
-    // unchanged prefix, so it should run far faster than a full parse of the edited document; the memory
-    // metrics (configured above) capture the parsing state a session retains for the input's lifetime.
-    let incrementalBase = makeJSON(objectCount: 1024)
-    let incrementalBytes = Array(incrementalBase.utf8)
-    let incrementalEditAt = max(0, incrementalBytes.count - 1)
-    var incrementalEditedBytes = incrementalBytes
-    incrementalEditedBytes.insert(0x20, at: incrementalEditAt)  // a late whitespace insertion, still valid JSON
-    let incrementalEditedText = String(decoding: incrementalEditedBytes, as: UTF8.self)
-    let incrementalEdit = TextEdit(
-        startByte: incrementalEditAt, oldEndByte: incrementalEditAt, newEndByte: incrementalEditAt + 1)
+    // Incremental reparse versus a full reparse. The fixture is a large JSON document with a single small
+    // edit placed late in the text, so an incremental session reuses the verified token prefix up to the
+    // first changed byte and re-derives only the short suffix. Memory metrics are part of the default set,
+    // but they are listed explicitly on the incremental cases to record that the session's per-input-size
+    // checkpoint retention is what is measured there. Engine construction stays outside the timer, as
+    // elsewhere; the GLR engine is shared by the baseline and the incremental cases for a like-for-like cost.
 
-    Benchmark("Reparse large JSON after a late edit (GLR full parse baseline)") { benchmark in
-        let engine = try UTF8GLRParser(grammar: JSONGrammar.grammar())
-        let edited = Source(incrementalEditedText)
+    // Baseline: every iteration parses the edited document from scratch, as a non-incremental client would
+    // after each keystroke.
+    Benchmark("Reparse large JSON (GLR, full parse baseline)") { benchmark in
+        let engine = try UTF8GLRParser(grammar: json)
         benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations { blackHole(engine.parse(edited)) }
+        for _ in benchmark.scaledIterations { blackHole(engine.parse(incrementalFixture.edited)) }
     }
 
-    Benchmark("Reparse large JSON after a late edit (GLR incremental session)") { benchmark in
-        let engine = try UTF8GLRParser(grammar: JSONGrammar.grammar())
-        let original = Source(incrementalBase)
-        let edited = Source(incrementalEditedText)
-        let edits = [incrementalEdit]
+    // Incremental: a fresh session over the original document is established outside the timer, then only the
+    // single late edit's reparse is measured. A session is single use, so it is rebuilt each closure
+    // invocation; one reparse per invocation keeps the comparison against the baseline direct.
+    Benchmark(
+        "Reparse large JSON (GLR, incremental single late edit)",
+        configuration: .init(
+            metrics: [.wallClock, .throughput, .mallocCountTotal, .peakMemoryResident],
+            scalingFactor: .one
+        )
+    ) { benchmark in
+        let engine = try UTF8GLRParser(grammar: json)
+        let session = engine.incrementalParse(incrementalFixture.original)
         benchmark.startMeasurement()
-        for _ in benchmark.scaledIterations {
-            let session = engine.incrementalParse(original)
-            blackHole(session.reparse(edited, edits: edits))
-        }
+        let reparsed = session.reparse(incrementalFixture.edited, edits: [incrementalFixture.edit])
+        blackHole(reparsed.result)
+        benchmark.stopMeasurement()
+    }
+
+    // Reference: the cost, and the memory footprint, of establishing the initial incremental session before
+    // any edit is applied. Together with the two cases above this isolates the marginal cost of one reparse.
+    Benchmark(
+        "Parse large JSON (GLR, incremental initial session)",
+        configuration: .init(
+            metrics: [.wallClock, .throughput, .mallocCountTotal, .peakMemoryResident],
+            scalingFactor: .one
+        )
+    ) { benchmark in
+        let engine = try UTF8GLRParser(grammar: json)
+        benchmark.startMeasurement()
+        let session = engine.incrementalParse(incrementalFixture.original)
+        blackHole(session.result)
+        benchmark.stopMeasurement()
     }
 
 }
